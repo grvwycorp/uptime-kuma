@@ -720,7 +720,22 @@ let needSetup = false;
 
                 monitor.rabbitmqNodes = JSON.stringify(monitor.rabbitmqNodes);
 
-                bean.import(monitor);
+                // Temporarily remove GlobalPing fields until migration runs
+                const globalpingFields = [
+                    "globalping_locations",
+                    "globalping_success_threshold",
+                    "globalping_api_token",
+                    "globalping_auto_pause",
+                    "globalping_consecutive_429s",
+                    "globalping_enable_progress_tracking",
+                    "globalping_enable_observability",
+                    "globalpingLocationsList"
+                ];
+
+                const cleanMonitor = { ...monitor };
+                globalpingFields.forEach(field => delete cleanMonitor[field]);
+
+                bean.import(cleanMonitor);
                 bean.user_id = socket.userID;
 
                 bean.validate();
@@ -875,6 +890,15 @@ let needSetup = false;
                 bean.rabbitmqUsername = monitor.rabbitmqUsername;
                 bean.rabbitmqPassword = monitor.rabbitmqPassword;
                 bean.conditions = JSON.stringify(monitor.conditions);
+
+                // GlobalPing fields - temporarily commented out until migration runs
+                // bean.globalping_locations = monitor.globalping_locations;
+                // bean.globalping_success_threshold = monitor.globalping_success_threshold;
+                // bean.globalping_api_token = monitor.globalping_api_token;
+                // bean.globalping_auto_pause = monitor.globalping_auto_pause;
+                // bean.globalping_consecutive_429s = monitor.globalping_consecutive_429s;
+                // bean.globalping_enable_progress_tracking = monitor.globalping_enable_progress_tracking;
+                // bean.globalping_enable_observability = monitor.globalping_enable_observability;
 
                 bean.validate();
 

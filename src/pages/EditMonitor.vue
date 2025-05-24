@@ -42,6 +42,9 @@
                                         <option value="dns">
                                             DNS
                                         </option>
+                                        <option value="globalping">
+                                            GlobalPing - Global Network Testing
+                                        </option>
                                         <option value="docker">
                                             {{ $t("Docker Container") }}
                                         </option>
@@ -422,6 +425,113 @@
                                 </div>
                             </template>
 
+                            <!-- GlobalPing Configuration -->
+                            <!-- For GlobalPing Type -->
+                            <template v-if="monitor.type === 'globalping'">
+                                <!-- Target -->
+                                <div class="my-3">
+                                    <label for="target" class="form-label">{{ $t("Target") }}</label>
+                                    <input
+                                        id="target" v-model="monitor.url" type="text" class="form-control"
+                                        placeholder="example.com or 8.8.8.8" required
+                                        data-testid="globalping-target-input"
+                                    >
+                                    <div class="form-text">
+                                        {{ $t("globalpingTargetDescription") }}
+                                    </div>
+                                </div>
+
+                                <!-- Location Selection -->
+                                <div class="my-3">
+                                    <label for="globalping_locations" class="form-label">{{ $t("Probe Locations") }}</label>
+                                    <VueMultiselect
+                                        id="globalping_locations"
+                                        v-model="monitor.globalpingLocationsList"
+                                        :options="globalpingLocationOptions"
+                                        :multiple="true"
+                                        :close-on-select="false"
+                                        :clear-on-select="false"
+                                        :preserve-search="false"
+                                        :placeholder="$t('Select regions for global testing')"
+                                        :preselect-first="false"
+                                        :max-height="300"
+                                        :taggable="false"
+                                        track-by="value"
+                                        label="label"
+                                        data-testid="globalping-locations-select"
+                                    ></VueMultiselect>
+                                    <div class="form-text">
+                                        {{ $t("globalpingLocationsDescription") }}
+                                    </div>
+                                </div>
+
+                                <!-- Success Threshold -->
+                                <div class="my-3">
+                                    <label for="globalping_success_threshold" class="form-label">{{ $t("Success Threshold") }} (%)</label>
+                                    <input
+                                        id="globalping_success_threshold" v-model="monitor.globalping_success_threshold"
+                                        type="number" class="form-control" min="1" max="100" step="1" value="80"
+                                        data-testid="globalping-success-threshold-input"
+                                    >
+                                    <div class="form-text">
+                                        {{ $t("globalpingSuccessThresholdDescription") }}
+                                    </div>
+                                </div>
+
+                                <!-- Advanced Options -->
+                                <div class="my-3">
+                                    <h5 class="mb-3">{{ $t("Advanced Options") }}</h5>
+
+                                    <!-- API Token -->
+                                    <div class="my-3">
+                                        <label for="globalping_api_token" class="form-label">{{ $t("API Token") }} ({{ $t("Optional") }})</label>
+                                        <HiddenInput
+                                            id="globalping_api_token" v-model="monitor.globalping_api_token"
+                                            autocomplete="false" placeholder="For higher rate limits"
+                                        ></HiddenInput>
+                                        <div class="form-text">
+                                            {{ $t("globalpingApiTokenDescription") }}
+                                        </div>
+                                    </div>
+
+                                    <!-- Progress Tracking Toggle -->
+                                    <div class="form-check my-3">
+                                        <input
+                                            id="globalping_enable_progress_tracking" v-model="monitor.globalping_enable_progress_tracking"
+                                            class="form-check-input" type="checkbox"
+                                        >
+                                        <label class="form-check-label" for="globalping_enable_progress_tracking">
+                                            {{ $t("Enable real-time progress tracking") }}
+                                        </label>
+                                        <div class="form-text">{{ $t("globalpingProgressTrackingDescription") }}</div>
+                                    </div>
+
+                                    <!-- Observability Toggle -->
+                                    <div class="form-check my-3">
+                                        <input
+                                            id="globalping_enable_observability" v-model="monitor.globalping_enable_observability"
+                                            class="form-check-input" type="checkbox"
+                                        >
+                                        <label class="form-check-label" for="globalping_enable_observability">
+                                            {{ $t("Enable detailed metrics collection") }}
+                                        </label>
+                                        <div class="form-text">{{ $t("globalpingObservabilityDescription") }}</div>
+                                    </div>
+
+                                    <!-- Auto-pause -->
+                                    <div class="form-check my-3">
+                                        <input
+                                            id="globalping_auto_pause" v-model="monitor.globalping_auto_pause"
+                                            class="form-check-input" type="checkbox"
+                                        >
+                                        <label class="form-check-label" for="globalping_auto_pause">
+                                            {{ $t("Auto-pause after rate limit failures") }}
+                                        </label>
+                                        <div class="form-text">{{ $t("globalpingAutoPauseDescription") }}</div>
+                                    </div>
+                                </div>
+                            </template>
+
                             <!-- Docker Container Name / ID -->
                             <!-- For Docker Type -->
                             <div v-if="monitor.type === 'docker'" class="my-3">
@@ -591,7 +701,7 @@
                             <!-- Interval -->
                             <div class="my-3">
                                 <label for="interval" class="form-label">{{ $t("Heartbeat Interval") }} ({{ $t("checkEverySecond", [ monitor.interval ]) }})</label>
-                                <input id="interval" v-model="monitor.interval" type="number" class="form-control" required :min="minInterval" step="1" :max="maxInterval" @blur="finishUpdateInterval">
+                                <input id="interval" v-model="monitor.interval" type="number" class="form-control" required :min="computedMinInterval" step="1" :max="maxInterval" data-testid="interval-input" @blur="finishUpdateInterval">
                             </div>
 
                             <div class="my-3">
@@ -1126,7 +1236,17 @@ const monitorDefaults = {
     rabbitmqNodes: [],
     rabbitmqUsername: "",
     rabbitmqPassword: "",
-    conditions: []
+    conditions: [],
+    // GlobalPing defaults
+    globalping_locations: JSON.stringify([{ magic: "Europe" }]),
+    globalping_success_threshold: 80,
+    globalping_api_token: "",
+    globalping_auto_pause: false,
+    globalping_consecutive_429s: 0,
+    globalping_enable_progress_tracking: false,
+    globalping_enable_observability: false,
+    globalpingLocationsList: [{ label: "Europe",
+        value: { magic: "Europe" } }]
 };
 
 export default {
@@ -1168,6 +1288,38 @@ export default {
             },
             draftGroupName: null,
             remoteBrowsersEnabled: false,
+            globalpingLocationOptions: [
+                { label: "Europe",
+                    value: { magic: "Europe" } },
+                { label: "North America",
+                    value: { magic: "North America" } },
+                { label: "Asia",
+                    value: { magic: "Asia" } },
+                { label: "Oceania",
+                    value: { magic: "Oceania" } },
+                { label: "Africa",
+                    value: { magic: "Africa" } },
+                { label: "South America",
+                    value: { magic: "South America" } },
+                { label: "AWS",
+                    value: { magic: "aws" } },
+                { label: "Google Cloud",
+                    value: { magic: "gcp" } },
+                { label: "Azure",
+                    value: { magic: "azure" } },
+                { label: "Germany",
+                    value: { magic: "Germany" } },
+                { label: "United States",
+                    value: { magic: "United States" } },
+                { label: "United Kingdom",
+                    value: { magic: "United Kingdom" } },
+                { label: "France",
+                    value: { magic: "France" } },
+                { label: "Japan",
+                    value: { magic: "Japan" } },
+                { label: "Singapore",
+                    value: { magic: "Singapore" } },
+            ],
         };
     },
 
@@ -1198,6 +1350,17 @@ export default {
                 return this.ipRegexPattern;
             }
             return null;
+        },
+
+        /**
+         * Computed minimum interval that adjusts for GlobalPing's 30-second requirement
+         * @returns {number} Minimum interval in seconds
+         */
+        computedMinInterval() {
+            if (this.monitor.type === "globalping") {
+                return 30; // GlobalPing requires minimum 30 seconds
+            }
+            return this.minInterval; // Default 20 seconds
         },
 
         pageName() {
@@ -1530,6 +1693,35 @@ message HealthCheckResponse {
                 }
             }
 
+            // Set GlobalPing defaults when type is globalping
+            if (this.monitor.type === "globalping") {
+                if (!this.monitor.globalping_locations) {
+                    this.monitor.globalping_locations = JSON.stringify([{ magic: "Europe" }]);
+                }
+                if (!this.monitor.globalping_success_threshold) {
+                    this.monitor.globalping_success_threshold = 80;
+                }
+                if (!this.monitor.globalping_api_token) {
+                    this.monitor.globalping_api_token = "";
+                }
+                if (this.monitor.globalping_auto_pause === undefined) {
+                    this.monitor.globalping_auto_pause = false;
+                }
+                if (!this.monitor.globalping_consecutive_429s) {
+                    this.monitor.globalping_consecutive_429s = 0;
+                }
+                if (this.monitor.globalping_enable_progress_tracking === undefined) {
+                    this.monitor.globalping_enable_progress_tracking = false;
+                }
+                if (this.monitor.globalping_enable_observability === undefined) {
+                    this.monitor.globalping_enable_observability = false;
+                }
+                if (!this.monitor.globalpingLocationsList) {
+                    this.monitor.globalpingLocationsList = [{ label: "Europe",
+                        value: { magic: "Europe" } }];
+                }
+            }
+
             // Reset conditions since condition variables likely change:
             if (oldType && newType !== oldType) {
                 this.monitor.conditions = [];
@@ -1546,6 +1738,35 @@ message HealthCheckResponse {
         "monitor.ignoreTls"(newVal) {
             if (newVal) {
                 this.monitor.expiryNotification = false;
+            }
+        },
+
+        // GlobalPing location data conversion watchers
+        "monitor.globalpingLocationsList": {
+            handler(newVal) {
+                if (newVal && Array.isArray(newVal)) {
+                    this.monitor.globalping_locations = JSON.stringify(newVal.map(item => item.value));
+                }
+            },
+            deep: true
+        },
+
+        "monitor.globalping_locations"(newVal) {
+            if (newVal && typeof newVal === "string") {
+                try {
+                    const locations = JSON.parse(newVal);
+                    this.monitor.globalpingLocationsList = locations.map(loc => {
+                        const option = this.globalpingLocationOptions.find(opt =>
+                            JSON.stringify(opt.value) === JSON.stringify(loc)
+                        );
+                        return option || { label: JSON.stringify(loc),
+                            value: loc };
+                    });
+                } catch (e) {
+                    // Invalid JSON, reset to default
+                    this.monitor.globalpingLocationsList = [{ label: "Europe",
+                        value: { magic: "Europe" } }];
+                }
             }
         },
     },

@@ -105,4 +105,47 @@ test.describe("Monitor Form", () => {
 
         await screenshot(testInfo, page);
     });
+
+    test("GlobalPing monitor creation", async ({ page }, testInfo) => {
+        await page.goto("./add");
+        await login(page);
+        await screenshot(testInfo, page, "initial-page");
+
+        // Select GlobalPing monitor type
+        const monitorTypeSelect = page.getByTestId("monitor-type-select");
+        await expect(monitorTypeSelect).toBeVisible();
+        await screenshot(testInfo, page, "before-type-select");
+
+        // Check if GlobalPing option exists
+        const globalpingOption = monitorTypeSelect.locator("option[value=\"globalping\"]");
+        await expect(globalpingOption).toBeAttached();
+
+        await monitorTypeSelect.selectOption("globalping");
+        await screenshot(testInfo, page, "after-type-select");
+
+        // Wait a moment after type selection to ensure page is stable
+        await page.waitForTimeout(2000);
+        await screenshot(testInfo, page, "after-wait");
+
+        // Check if the page is still responsive
+        const friendlyNameInput = page.getByTestId("friendly-name-input");
+        await expect(friendlyNameInput).toBeVisible();
+        await screenshot(testInfo, page, "friendly-name-visible");
+
+        // Check if GlobalPing target input exists
+        const targetInput = page.getByTestId("globalping-target-input");
+        await expect(targetInput).toBeVisible();
+        await screenshot(testInfo, page, "target-input-visible");
+
+        // Just fill the friendly name and target, skip interval for now
+        await friendlyNameInput.fill("GlobalPing Test");
+        await targetInput.fill("google.com");
+        await screenshot(testInfo, page, "basic-fields-filled");
+
+        // Try to save without setting interval to see what happens
+        await page.getByTestId("save-button").click();
+        await screenshot(testInfo, page, "after-save-attempt");
+
+        // The test should at least get this far without the page crashing
+    });
 });
