@@ -3,7 +3,7 @@ name: Deploy to VPS
 on:
   push:
     branches:
-      - feat/globalping-integration
+      - feat/Globalping-integration
   workflow_dispatch:
 
 jobs:
