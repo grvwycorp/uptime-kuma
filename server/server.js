@@ -1736,7 +1736,15 @@ let needSetup = false;
         } else {
             log.info("server", `Listening on ${port}`);
         }
-        await startMonitors();
+
+        // Iris: Check mode to determine if monitoring should run
+        const irisMode = process.env.IRIS_MODE || "probe";
+        if (irisMode === "master") {
+            log.info("server", "Running in MASTER mode (UI only, monitoring disabled)");
+        } else {
+            log.info("server", `Running in PROBE mode (monitoring enabled, probe_id: ${process.env.IRIS_PROBE_ID || process.env.HOSTNAME || "unknown"})`);
+            await startMonitors();
+        }
 
         // Put this here. Start background jobs after the db and server is ready to prevent clear up during db migration.
         await initBackgroundJobs();

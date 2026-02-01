@@ -1,0 +1,23 @@
+services:
+  iris-probe:
+    build:
+      context: ../src
+      dockerfile: docker/dockerfile
+    container_name: iris-probe
+    hostname: ${HOSTNAME:-iris-probe}
+    restart: unless-stopped
+    environment:
+      IRIS_MODE: probe
+      IRIS_PROBE_ID: ${HOSTNAME:-iris-probe}
+      # OTEL endpoint on master (via Tailscale MagicDNS)
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${IRIS_MASTER_OTEL:-http://master01-hostup:4317}
+    ports:
+      - "3001:3001"
+    volumes:
+      - iris-probe-data:/app/data
+    # Bridge mode works since Tailscale runs on host - traffic routes through host's tailscale0
+    # Use host mode if you need the probe to be directly reachable via Tailscale IP
+    network_mode: bridge
+
+volumes:
+  iris-probe-data:

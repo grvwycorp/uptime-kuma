@@ -454,6 +454,8 @@ class Monitor extends BeanModel {
             bean.time = R.isoDateTimeMillis(dayjs.utc());
             bean.status = DOWN;
             bean.downCount = previousBeat?.downCount || 0;
+            // Iris: Track which probe generated this heartbeat
+            bean.probe_id = process.env.IRIS_PROBE_ID || process.env.HOSTNAME || null;
 
             if (this.isUpsideDown()) {
                 bean.status = flipStatus(bean.status);

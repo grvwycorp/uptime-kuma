@@ -1,0 +1,77 @@
+services:
+  iris-web:
+    build:
+      context: ../src
+      dockerfile: docker/dockerfile
+    container_name: iris-web
+    restart: unless-stopped
+    environment:
+      IRIS_MODE: master
+      UPTIME_KUMA_DB_TYPE: mariadb
+      UPTIME_KUMA_DB_HOSTNAME: iris-db
+      UPTIME_KUMA_DB_PORT: 3306
+      UPTIME_KUMA_DB_NAME: iris
+      UPTIME_KUMA_DB_USERNAME: iris
+      UPTIME_KUMA_DB_PASSWORD: ${DB_PASSWORD}
+      # Optional integrations (set via GitHub secrets)
+      GRAFANA_API_KEY: ${GRAFANA_API_KEY:-}
+    ports:
+      - "3001:3001"
+    volumes:
+      - iris-web-data:/app/data
+    depends_on:
+      iris-db:
+        condition: service_healthy
+    networks:
+      - iris-network
+
+  iris-db:
+    image: mariadb:10.11
+    container_name: iris-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_DATABASE: iris
+      MARIADB_USER: iris
+      MARIADB_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - iris-db-data:/var/lib/mysql
+    secrets:
+      - db_root_password
+      - db_password
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - iris-network
+
+  iris-otel:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: iris-otel
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics (collector self-metrics)
+    networks:
+      - iris-network
+
+secrets:
+  db_root_password:
+    file: ./secrets/db_root_password.txt
+  db_password:
+    file: ./secrets/db_password.txt
+
+volumes:
+  iris-web-data:
+  iris-db-data:
+
+networks:
+  iris-network:
+    driver: bridge

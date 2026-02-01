@@ -1,0 +1,42 @@
+# Iris Fleet Inventory
+# This file documents the fleet topology for reference.
+# Actual deployment is driven by GitHub runner labels.
+
+masters:
+  - hostname: master01-hostup
+    description: Primary master node (HostUp VPS)
+    runner_labels: [self-hosted, master]
+    tailscale_name: master01-hostup
+    tailscale_ip: 100.121.116.41
+    location: frankfurt
+    services:
+      - iris-web (UI only, no monitoring)
+      - iris-db (MariaDB)
+      - iris-otel (OpenTelemetry collector)
+
+  # Future HA:
+  # - hostname: master02
+  #   description: Secondary master node
+  #   runner_labels: [self-hosted, master]
+  #   tailscale_name: master02
+  #   location: nuremberg
+
+probes:
+  - hostname: probe01
+    description: VPS probe
+    runner_labels: [self-hosted, probe]
+    tailscale_name: probe01
+    tailscale_ip: 100.97.5.70
+    location: frankfurt
+
+  - hostname: debian
+    description: Debianbook probe
+    runner_labels: [self-hosted, probe]
+    tailscale_name: debian
+    tailscale_ip: 100.87.62.9
+    location: nuremberg
+
+# To add a new probe:
+# 1. Run setup-runner.sh with labels: probe,linux
+# 2. Run setup-tailscale.sh with appropriate hostname
+# 3. Push to master branch - probe auto-deploys

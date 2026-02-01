@@ -1,0 +1,172 @@
+name: Deploy Iris
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/auto-test.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deploy target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - master
+          - probes
+      rebuild:
+        description: 'Force rebuild (no cache)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DEPLOY_DIR: /opt/iris
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ============================================
+  # Master deployment
+  # Runs on nodes with label: [self-hosted, master]
+  # ============================================
+  deploy-master:
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.target == 'all' ||
+      github.event.inputs.target == 'master'
+    runs-on: [self-hosted, master]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup deployment directory
+        run: |
+          sudo mkdir -p ${{ env.DEPLOY_DIR }}
+          sudo chown $(whoami):$(whoami) ${{ env.DEPLOY_DIR }}
+          # Sync deploy files to fixed location
+          rsync -av --delete deploy/master/ ${{ env.DEPLOY_DIR }}/master/
+          rsync -av docker/ ${{ env.DEPLOY_DIR }}/docker/
+          # Copy source files needed for build
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='data' \
+            ./ ${{ env.DEPLOY_DIR }}/src/
+
+      - name: Create secrets directory
+        run: mkdir -p ${{ env.DEPLOY_DIR }}/master/secrets
+
+      - name: Write DB secrets to files
+        run: |
+          echo "${{ secrets.DB_ROOT_PASSWORD }}" > ${{ env.DEPLOY_DIR }}/master/secrets/db_root_password.txt
+          echo "${{ secrets.DB_PASSWORD }}" > ${{ env.DEPLOY_DIR }}/master/secrets/db_password.txt
+          chmod 600 ${{ env.DEPLOY_DIR }}/master/secrets/*.txt
+
+      - name: Build Iris image
+        working-directory: ${{ env.DEPLOY_DIR }}/master
+        run: |
+          BUILD_ARGS=""
+          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
+            BUILD_ARGS="--no-cache"
+          fi
+          docker compose -p iris build $BUILD_ARGS
+
+      - name: Deploy master services
+        working-directory: ${{ env.DEPLOY_DIR }}/master
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+        run: |
+          docker compose -p iris up -d --remove-orphans
+          sleep 5
+          docker compose -p iris ps
+
+      - name: Health check
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:3001 > /dev/null; then
+              echo "Iris web is healthy"
+              exit 0
+            fi
+            echo "Waiting for Iris web... ($i/30)"
+            sleep 2
+          done
+          echo "Health check failed"
+          docker compose -p iris -f ${{ env.DEPLOY_DIR }}/master/docker-compose.yml logs iris-web
+          exit 1
+
+      - name: Cleanup old images
+        run: docker image prune -f
+
+  # ============================================
+  # Probe deployment
+  # Runs on ALL nodes with label: [self-hosted, probe]
+  # Each probe runner executes this independently
+  # ============================================
+  deploy-probes:
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.target == 'all' ||
+      github.event.inputs.target == 'probes'
+    runs-on: [self-hosted, probe]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get probe identity
+        id: identity
+        run: |
+          PROBE_HOSTNAME=$(hostname -s)
+          echo "hostname=${PROBE_HOSTNAME}" >> $GITHUB_OUTPUT
+          echo "Deploying probe: ${PROBE_HOSTNAME}"
+
+      - name: Setup deployment directory
+        run: |
+          sudo mkdir -p ${{ env.DEPLOY_DIR }}
+          sudo chown $(whoami):$(whoami) ${{ env.DEPLOY_DIR }}
+          # Sync deploy files to fixed location
+          rsync -av --delete deploy/probe/ ${{ env.DEPLOY_DIR }}/probe/
+          rsync -av docker/ ${{ env.DEPLOY_DIR }}/docker/
+          # Copy source files needed for build
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='data' \
+            ./ ${{ env.DEPLOY_DIR }}/src/
+
+      - name: Build Iris probe image
+        working-directory: ${{ env.DEPLOY_DIR }}/probe
+        run: |
+          BUILD_ARGS=""
+          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
+            BUILD_ARGS="--no-cache"
+          fi
+          docker compose -p iris build $BUILD_ARGS
+
+      - name: Deploy probe
+        working-directory: ${{ env.DEPLOY_DIR }}/probe
+        env:
+          HOSTNAME: ${{ steps.identity.outputs.hostname }}
+        run: |
+          docker compose -p iris up -d --remove-orphans
+          sleep 5
+          docker compose -p iris ps
+
+      - name: Health check
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:3001 > /dev/null; then
+              echo "Iris probe is healthy"
+              exit 0
+            fi
+            echo "Waiting for Iris probe... ($i/30)"
+            sleep 2
+          done
+          echo "Health check failed"
+          docker compose -p iris -f ${{ env.DEPLOY_DIR }}/probe/docker-compose.yml logs iris-probe
+          exit 1
+
+      - name: Cleanup old images
+        run: docker image prune -f
