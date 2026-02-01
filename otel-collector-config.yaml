@@ -26,7 +26,7 @@ processors:
         value: uptime-kuma
         action: upsert
       - key: deployment.environment
-        value: '${DEPLOYMENT_ENV:-production}'
+        value: '${DEPLOYMENT_ENV}'
         action: upsert
 
 exporters:
