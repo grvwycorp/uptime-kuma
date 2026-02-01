@@ -3,6 +3,7 @@ services:
     build:
       context: ../..
       dockerfile: docker/dockerfile
+      target: release
     container_name: iris-probe
     hostname: ${HOSTNAME:-iris-probe}
     restart: unless-stopped
