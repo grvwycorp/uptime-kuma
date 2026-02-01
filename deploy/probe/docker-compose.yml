@@ -1,7 +1,7 @@
 services:
   iris-probe:
     build:
-      context: ../src
+      context: ../..
       dockerfile: docker/dockerfile
     container_name: iris-probe
     hostname: ${HOSTNAME:-iris-probe}

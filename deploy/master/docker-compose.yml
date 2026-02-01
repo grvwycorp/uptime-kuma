@@ -1,7 +1,7 @@
 services:
   iris-web:
     build:
-      context: ../src
+      context: ../..
       dockerfile: docker/dockerfile
     container_name: iris-web
     restart: unless-stopped

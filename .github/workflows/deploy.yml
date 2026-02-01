@@ -25,7 +25,6 @@ on:
         type: boolean
 
 env:
-  DEPLOY_DIR: /opt/iris
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -41,32 +40,24 @@ jobs:
     runs-on: [self-hosted, master]
     timeout-minutes: 15
 
+    env:
+      DEPLOY_DIR: ${{ github.workspace }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup deployment directory
-        run: |
-          sudo mkdir -p ${{ env.DEPLOY_DIR }}
-          sudo chown $(whoami):$(whoami) ${{ env.DEPLOY_DIR }}
-          # Sync deploy files to fixed location
-          rsync -av --delete deploy/master/ ${{ env.DEPLOY_DIR }}/master/
-          rsync -av docker/ ${{ env.DEPLOY_DIR }}/docker/
-          # Copy source files needed for build
-          rsync -av --exclude='.git' --exclude='node_modules' --exclude='data' \
-            ./ ${{ env.DEPLOY_DIR }}/src/
-
       - name: Create secrets directory
-        run: mkdir -p ${{ env.DEPLOY_DIR }}/master/secrets
+        run: mkdir -p deploy/master/secrets
 
       - name: Write DB secrets to files
         run: |
-          echo "${{ secrets.DB_ROOT_PASSWORD }}" > ${{ env.DEPLOY_DIR }}/master/secrets/db_root_password.txt
-          echo "${{ secrets.DB_PASSWORD }}" > ${{ env.DEPLOY_DIR }}/master/secrets/db_password.txt
-          chmod 600 ${{ env.DEPLOY_DIR }}/master/secrets/*.txt
+          echo "${{ secrets.DB_ROOT_PASSWORD }}" > deploy/master/secrets/db_root_password.txt
+          echo "${{ secrets.DB_PASSWORD }}" > deploy/master/secrets/db_password.txt
+          chmod 600 deploy/master/secrets/*.txt
 
       - name: Build Iris image
-        working-directory: ${{ env.DEPLOY_DIR }}/master
+        working-directory: deploy/master
         run: |
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
@@ -75,7 +66,7 @@ jobs:
           docker compose -p iris build $BUILD_ARGS
 
       - name: Deploy master services
-        working-directory: ${{ env.DEPLOY_DIR }}/master
+        working-directory: deploy/master
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
@@ -95,7 +86,7 @@ jobs:
             sleep 2
           done
           echo "Health check failed"
-          docker compose -p iris -f ${{ env.DEPLOY_DIR }}/master/docker-compose.yml logs iris-web
+          docker compose -p iris -f deploy/master/docker-compose.yml logs iris-web
           exit 1
 
       - name: Cleanup old images
@@ -103,16 +94,25 @@ jobs:
 
   # ============================================
   # Probe deployment
-  # Runs on ALL nodes with label: [self-hosted, probe]
-  # Each probe runner executes this independently
+  # Uses matrix to deploy to ALL probe runners
+  # Add unique labels to runners: probe01, debian, etc.
   # ============================================
   deploy-probes:
     if: >
       github.event_name == 'push' ||
       github.event.inputs.target == 'all' ||
       github.event.inputs.target == 'probes'
-    runs-on: [self-hosted, probe]
+    strategy:
+      fail-fast: false
+      matrix:
+        probe:
+          - probe01
+          - debianbook
+    runs-on: [self-hosted, probe, '${{ matrix.probe }}']
     timeout-minutes: 15
+
+    env:
+      DEPLOY_DIR: ${{ github.workspace }}
 
     steps:
       - name: Checkout repository
@@ -125,19 +125,8 @@ jobs:
           echo "hostname=${PROBE_HOSTNAME}" >> $GITHUB_OUTPUT
           echo "Deploying probe: ${PROBE_HOSTNAME}"
 
-      - name: Setup deployment directory
-        run: |
-          sudo mkdir -p ${{ env.DEPLOY_DIR }}
-          sudo chown $(whoami):$(whoami) ${{ env.DEPLOY_DIR }}
-          # Sync deploy files to fixed location
-          rsync -av --delete deploy/probe/ ${{ env.DEPLOY_DIR }}/probe/
-          rsync -av docker/ ${{ env.DEPLOY_DIR }}/docker/
-          # Copy source files needed for build
-          rsync -av --exclude='.git' --exclude='node_modules' --exclude='data' \
-            ./ ${{ env.DEPLOY_DIR }}/src/
-
       - name: Build Iris probe image
-        working-directory: ${{ env.DEPLOY_DIR }}/probe
+        working-directory: deploy/probe
         run: |
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
@@ -146,7 +135,7 @@ jobs:
           docker compose -p iris build $BUILD_ARGS
 
       - name: Deploy probe
-        working-directory: ${{ env.DEPLOY_DIR }}/probe
+        working-directory: deploy/probe
         env:
           HOSTNAME: ${{ steps.identity.outputs.hostname }}
         run: |
@@ -165,7 +154,7 @@ jobs:
             sleep 2
           done
           echo "Health check failed"
-          docker compose -p iris -f ${{ env.DEPLOY_DIR }}/probe/docker-compose.yml logs iris-probe
+          docker compose -p iris -f deploy/probe/docker-compose.yml logs iris-probe
           exit 1
 
       - name: Cleanup old images
