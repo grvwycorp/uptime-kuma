@@ -26,5 +26,6 @@ services:
       - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
       - GRAFANA_API_KEY=${GRAFANA_API_KEY}
       - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-production}
+      - GRAFANA_OTLP_HEADERS=${GRAFANA_OTLP_HEADERS}
     depends_on:
       - uptime-kuma
