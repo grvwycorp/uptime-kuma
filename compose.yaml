@@ -10,3 +10,20 @@ services:
       - /opt/uptime-kuma/data:/app/data
     ports:
       - "3001:3001"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    environment:
+      # Uptime Kuma credentials for scraping /metrics
+      - UPTIME_KUMA_USERNAME=${UPTIME_KUMA_USERNAME}
+      - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD}
+      # Grafana Cloud OTLP settings
+      - GRAFANA_OTLP_ENDPOINT=${GRAFANA_OTLP_ENDPOINT}
+      - GRAFANA_OTLP_TOKEN=${GRAFANA_OTLP_TOKEN}
+      - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-production}
+    depends_on:
+      - uptime-kuma
