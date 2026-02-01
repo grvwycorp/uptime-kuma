@@ -21,9 +21,10 @@ services:
       # Uptime Kuma credentials for scraping /metrics
       - UPTIME_KUMA_USERNAME=${UPTIME_KUMA_USERNAME}
       - UPTIME_KUMA_PASSWORD=${UPTIME_KUMA_PASSWORD}
-      # Grafana Cloud OTLP settings
+      # Grafana Cloud settings
       - GRAFANA_OTLP_ENDPOINT=${GRAFANA_OTLP_ENDPOINT}
-      - GRAFANA_OTLP_TOKEN=${GRAFANA_OTLP_TOKEN}
+      - GRAFANA_INSTANCE_ID=${GRAFANA_INSTANCE_ID}
+      - GRAFANA_API_KEY=${GRAFANA_API_KEY}
       - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-production}
     depends_on:
       - uptime-kuma
