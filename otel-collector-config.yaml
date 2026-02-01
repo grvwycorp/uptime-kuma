@@ -1,12 +1,6 @@
 # OpenTelemetry Collector Configuration for Uptime Kuma
 # Scrapes Prometheus metrics and exports to Grafana Cloud
 
-extensions:
-  basicauth/grafana:
-    client_auth:
-      username: '${GRAFANA_INSTANCE_ID}'
-      password: '${GRAFANA_API_KEY}'
-
 receivers:
   prometheus:
     config:
@@ -23,30 +17,19 @@ receivers:
 processors:
   batch:
     timeout: 10s
-    send_batch_size: 1000
-
-  resource:
-    attributes:
-      - key: service.name
-        value: uptime-kuma
-        action: upsert
-      - key: deployment.environment
-        value: '${DEPLOYMENT_ENV}'
-        action: upsert
 
 exporters:
-  otlphttp/grafana:
+  otlphttp:
     endpoint: '${GRAFANA_OTLP_ENDPOINT}'
-    auth:
-      authenticator: basicauth/grafana
+    headers:
+      Authorization: '${GRAFANA_OTLP_HEADERS}'
 
   debug:
     verbosity: basic
 
 service:
-  extensions: [basicauth/grafana]
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [batch, resource]
-      exporters: [otlphttp/grafana, debug]
+      processors: [batch]
+      exporters: [otlphttp, debug]
