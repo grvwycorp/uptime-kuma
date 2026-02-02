@@ -6,6 +6,19 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # Scrape Prometheus metrics from iris-web
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'iris-web'
+          scrape_interval: 30s
+          metrics_path: /metrics
+          basic_auth:
+            username: '${env:IRIS_METRICS_USER}'
+            password: '${env:IRIS_METRICS_PASSWORD}'
+          static_configs:
+            - targets: ['iris-web:3001']
+
 processors:
   batch:
     timeout: 10s
@@ -41,7 +54,7 @@ service:
       exporters: [debug]
 
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus]
       processors: [memory_limiter, batch]
       exporters: [debug]
 

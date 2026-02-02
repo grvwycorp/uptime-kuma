@@ -59,12 +59,18 @@ services:
     container_name: iris-otel
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    environment:
+      # Credentials to scrape /metrics from iris-web (same as admin user)
+      IRIS_METRICS_USER: ${IRIS_MASTER_USER:-admin}
+      IRIS_METRICS_PASSWORD: ${IRIS_MASTER_PASSWORD}
     volumes:
       - ./otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
       - "8888:8888"   # Prometheus metrics (collector self-metrics)
+    depends_on:
+      - iris-web
     networks:
       - iris-network
 
