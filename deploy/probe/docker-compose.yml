@@ -8,6 +8,10 @@ services:
     hostname: ${HOSTNAME:-iris-probe}
     restart: unless-stopped
     environment:
+      # Auto-configure embedded MariaDB (skips /setup-database wizard)
+      UPTIME_KUMA_ENABLE_EMBEDDED_MARIADB: "1"
+      UPTIME_KUMA_DB_TYPE: embedded-mariadb
+      # Iris probe configuration
       IRIS_MODE: probe
       IRIS_PROBE_ID: ${HOSTNAME:-iris-probe}
       # OTEL endpoint on master (via Tailscale MagicDNS)
