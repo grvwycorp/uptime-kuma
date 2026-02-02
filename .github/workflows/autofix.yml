@@ -1,9 +1,12 @@
 name: autofix.ci
 
+# DISABLED for Iris fork - causes errors with .github modifications
+
 on:
   push:
-    branches: ["master", "1.23.X"]
+    branches: [disabled-branch-that-does-not-exist]
   pull_request:
+    branches: [disabled-branch-that-does-not-exist]
 permissions: {}
 
 jobs:

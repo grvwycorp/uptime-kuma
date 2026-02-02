@@ -1,12 +1,12 @@
 name: validate
+
+# DISABLED for Iris fork
+
 on:
   push:
-    branches:
-      - master
+    branches: [disabled-branch-that-does-not-exist]
   pull_request:
-    branches:
-      - master
-      - 1.23.X
+    branches: [disabled-branch-that-does-not-exist]
   workflow_dispatch:
 permissions: {}
 

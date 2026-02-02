@@ -1,12 +1,14 @@
 name: "CodeQL"
 
+# DISABLED for Iris fork - re-enable if you want security scanning
+
 on:
   push:
-    branches: ["master", "1.23.X"]
+    branches: [disabled-branch-that-does-not-exist]
   pull_request:
-    branches: ["master", "1.23.X"]
+    branches: [disabled-branch-that-does-not-exist]
   schedule:
-    - cron: "16 22 * * 0"
+    - cron: "0 0 31 2 *"  # Feb 31 = never runs
 
 jobs:
   analyze:

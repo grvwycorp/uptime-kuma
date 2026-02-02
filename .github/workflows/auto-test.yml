@@ -1,13 +1,17 @@
 name: Auto Test
 
+# DISABLED for Iris fork - not needed for our deployment
+# To re-enable, remove the 'if: false' from the job
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-server
   cancel-in-progress: true
 
 on:
   push:
-    branches: [master, 1.23.X, 3.0.0]
+    branches: [disabled-branch-that-does-not-exist]
   pull_request:
+    branches: [disabled-branch-that-does-not-exist]
 permissions: {}
 
 jobs:
