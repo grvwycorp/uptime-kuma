@@ -63,6 +63,8 @@ services:
       # Credentials to scrape /metrics from iris-web (same as admin user)
       IRIS_METRICS_USER: ${IRIS_MASTER_USER:-admin}
       IRIS_METRICS_PASSWORD: ${IRIS_MASTER_PASSWORD}
+      # Grafana Cloud OTLP auth header (format: "Basic <base64(instanceId:apiKey)>")
+      GRAFANA_OTLP_HEADERS: ${GRAFANA_OTLP_HEADERS:-}
     volumes:
       - ./otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
     ports:

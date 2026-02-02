@@ -19,7 +19,8 @@ services:
       IRIS_MODE: probe
       IRIS_PROBE_ID: ${HOSTNAME:-iris-probe}
       # OTEL endpoint on master (via Tailscale MagicDNS) - using HTTP port 4318
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${IRIS_MASTER_OTEL:-http://master01-hostup:4318}
+      # Note: Must use full MagicDNS name since container uses bridge networking (not host DNS)
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${IRIS_MASTER_OTEL:-http://master01-hostup.tail605657.ts.net:4318}
     ports:
       - "3001:3001"
     volumes:

@@ -70,6 +70,7 @@ jobs:
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          GRAFANA_OTLP_HEADERS: ${{ secrets.GRAFANA_OTLP_HEADERS }}
           IRIS_MASTER_USER: ${{ secrets.IRIS_MASTER_USER }}
           IRIS_MASTER_PASSWORD: ${{ secrets.IRIS_MASTER_PASSWORD }}
         run: |
