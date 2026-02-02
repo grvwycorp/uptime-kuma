@@ -14,6 +14,10 @@ dayjs.extend(require("dayjs/plugin/customParseFormat"));
 // Load environment variables from `.env`
 require("dotenv").config();
 
+// Initialize OTEL SDK for probe metrics (must be early, before most imports)
+// Only activates on probes (IRIS_MODE=probe) with OTEL_EXPORTER_OTLP_ENDPOINT set
+require("./otel-init");
+
 // Check Node.js Version
 const nodeVersion = process.versions.node;
 

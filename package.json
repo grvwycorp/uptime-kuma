@@ -72,6 +72,12 @@
     },
     "dependencies": {
         "@grpc/grpc-js": "~1.8.22",
+        "@opentelemetry/api": "~1.7.0",
+        "@opentelemetry/exporter-metrics-otlp-http": "~0.46.0",
+        "@opentelemetry/resources": "~1.19.0",
+        "@opentelemetry/sdk-metrics": "~1.19.0",
+        "@opentelemetry/sdk-node": "~0.46.0",
+        "@opentelemetry/semantic-conventions": "~1.19.0",
         "@louislam/ping": "~0.4.4-mod.1",
         "@louislam/sqlite3": "15.1.6",
         "@vvo/tzdb": "^6.125.0",

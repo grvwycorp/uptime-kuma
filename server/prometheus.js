@@ -1,6 +1,7 @@
 const PrometheusClient = require("prom-client");
 const { log } = require("../src/util");
 const { R } = require("redbean-node");
+const { recordMetric, removeMetrics, isEnabled: otelEnabled } = require("./otel-metrics");
 
 let monitorCertDaysRemaining = null;
 let monitorCertIsValid = null;
@@ -160,6 +161,10 @@ class Prometheus {
                     isValid = 0;
                 }
                 monitorCertIsValid.set(this.monitorLabelValues, isValid);
+                // Also push to OTEL if enabled
+                if (otelEnabled) {
+                    recordMetric("monitor_cert_is_valid", isValid, this.monitorLabelValues);
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
@@ -167,6 +172,10 @@ class Prometheus {
             try {
                 if (tlsInfo.certInfo != null) {
                     monitorCertDaysRemaining.set(this.monitorLabelValues, tlsInfo.certInfo.daysRemaining);
+                    // Also push to OTEL if enabled
+                    if (otelEnabled) {
+                        recordMetric("monitor_cert_days_remaining", tlsInfo.certInfo.daysRemaining, this.monitorLabelValues);
+                    }
                 }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
@@ -179,6 +188,9 @@ class Prometheus {
                     { ...this.monitorLabelValues, window: "1d" },
                     uptime.data24h.avgPing / 1000
                 );
+                if (otelEnabled) {
+                    recordMetric("monitor_response_time_seconds", uptime.data24h.avgPing / 1000, { ...this.monitorLabelValues, window: "1d" });
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
@@ -187,6 +199,9 @@ class Prometheus {
                     { ...this.monitorLabelValues, window: "30d" },
                     uptime.data30d.avgPing / 1000
                 );
+                if (otelEnabled) {
+                    recordMetric("monitor_response_time_seconds", uptime.data30d.avgPing / 1000, { ...this.monitorLabelValues, window: "30d" });
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
@@ -195,21 +210,33 @@ class Prometheus {
                     { ...this.monitorLabelValues, window: "365d" },
                     uptime.data1y.avgPing / 1000
                 );
+                if (otelEnabled) {
+                    recordMetric("monitor_response_time_seconds", uptime.data1y.avgPing / 1000, { ...this.monitorLabelValues, window: "365d" });
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
             try {
                 monitorUptimeRatio.set({ ...this.monitorLabelValues, window: "1d" }, uptime.data24h.uptime);
+                if (otelEnabled) {
+                    recordMetric("monitor_uptime_ratio", uptime.data24h.uptime, { ...this.monitorLabelValues, window: "1d" });
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
             try {
                 monitorUptimeRatio.set({ ...this.monitorLabelValues, window: "30d" }, uptime.data30d.uptime);
+                if (otelEnabled) {
+                    recordMetric("monitor_uptime_ratio", uptime.data30d.uptime, { ...this.monitorLabelValues, window: "30d" });
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
             try {
                 monitorUptimeRatio.set({ ...this.monitorLabelValues, window: "365d" }, uptime.data1y.uptime);
+                if (otelEnabled) {
+                    recordMetric("monitor_uptime_ratio", uptime.data1y.uptime, { ...this.monitorLabelValues, window: "365d" });
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error", e);
             }
@@ -218,6 +245,10 @@ class Prometheus {
         if (heartbeat) {
             try {
                 monitorStatus.set(this.monitorLabelValues, heartbeat.status);
+                // Also push to OTEL if enabled
+                if (otelEnabled) {
+                    recordMetric("monitor_status", heartbeat.status, this.monitorLabelValues);
+                }
             } catch (e) {
                 log.error("prometheus", "Caught error");
                 log.error("prometheus", e);
@@ -226,9 +257,16 @@ class Prometheus {
             try {
                 if (typeof heartbeat.ping === "number") {
                     monitorResponseTime.set(this.monitorLabelValues, heartbeat.ping);
+                    // Also push to OTEL if enabled
+                    if (otelEnabled) {
+                        recordMetric("monitor_response_time", heartbeat.ping, this.monitorLabelValues);
+                    }
                 } else {
                     // Is it good?
                     monitorResponseTime.set(this.monitorLabelValues, -1);
+                    if (otelEnabled) {
+                        recordMetric("monitor_response_time", -1, this.monitorLabelValues);
+                    }
                 }
             } catch (e) {
                 log.error("prometheus", "Caught error");
@@ -249,6 +287,10 @@ class Prometheus {
             monitorAverageResponseTimeSeconds.remove(this.monitorLabelValues);
             monitorResponseTime.remove(this.monitorLabelValues);
             monitorStatus.remove(this.monitorLabelValues);
+            // Also remove from OTEL if enabled
+            if (otelEnabled) {
+                removeMetrics(this.monitorLabelValues);
+            }
         } catch (e) {
             console.error(e);
         }
