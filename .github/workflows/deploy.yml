@@ -70,6 +70,8 @@ jobs:
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          IRIS_MASTER_USER: ${{ secrets.IRIS_MASTER_USER }}
+          IRIS_MASTER_PASSWORD: ${{ secrets.IRIS_MASTER_PASSWORD }}
         run: |
           docker compose -p iris up -d --remove-orphans
           sleep 5
@@ -138,6 +140,8 @@ jobs:
         working-directory: deploy/probe
         env:
           HOSTNAME: ${{ steps.identity.outputs.hostname }}
+          IRIS_PROBE_USER: ${{ secrets.IRIS_PROBE_USER }}
+          IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
         run: |
           docker compose -p iris up -d --remove-orphans
           sleep 5

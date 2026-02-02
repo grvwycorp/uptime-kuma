@@ -1858,8 +1858,38 @@ async function initDatabase(testMode = false) {
 
     // If there is no record in user table, it is a new Uptime Kuma instance, need to setup
     if ((await R.knex("user").count("id as count").first()).count === 0) {
-        log.info("server", "No user, need setup");
-        needSetup = true;
+        // Iris: Check for auto-setup via environment variables
+        const adminUsername = process.env.UPTIME_KUMA_ADMIN_USERNAME;
+        const adminPassword = process.env.UPTIME_KUMA_ADMIN_PASSWORD ||
+            (process.env.UPTIME_KUMA_ADMIN_PASSWORD_FILE ?
+                require("fs").readFileSync(process.env.UPTIME_KUMA_ADMIN_PASSWORD_FILE, "utf8").trim() : null);
+
+        if (adminUsername && adminPassword) {
+            log.info("server", "Auto-creating admin user from environment variables");
+
+            // Validate password strength
+            if (passwordStrength(adminPassword).value === "Too weak") {
+                log.error("server", "UPTIME_KUMA_ADMIN_PASSWORD is too weak. Please use a stronger password.");
+                needSetup = true;
+            } else {
+                // Create admin user
+                let user = R.dispense("user");
+                user.username = adminUsername;
+                user.password = await passwordHash.generate(adminPassword);
+                await R.store(user);
+
+                // Set language if provided
+                const adminLanguage = process.env.UPTIME_KUMA_ADMIN_LANGUAGE || "en";
+                await Settings.set("primaryBaseURL", "");
+                await Settings.set("defaultLocale", adminLanguage);
+
+                log.info("server", `Admin user '${adminUsername}' created successfully`);
+                needSetup = false;
+            }
+        } else {
+            log.info("server", "No user, need setup");
+            needSetup = true;
+        }
     }
 
     server.jwtSecret = jwtSecretBean.value;

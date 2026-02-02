@@ -8,12 +8,17 @@ services:
     restart: unless-stopped
     environment:
       IRIS_MODE: master
+      # Database configuration
       UPTIME_KUMA_DB_TYPE: mariadb
       UPTIME_KUMA_DB_HOSTNAME: iris-db
       UPTIME_KUMA_DB_PORT: 3306
       UPTIME_KUMA_DB_NAME: iris
       UPTIME_KUMA_DB_USERNAME: iris
       UPTIME_KUMA_DB_PASSWORD: ${DB_PASSWORD}
+      # Auto-create admin user (skips /setup wizard)
+      UPTIME_KUMA_ADMIN_USERNAME: ${IRIS_MASTER_USER:-admin}
+      UPTIME_KUMA_ADMIN_PASSWORD: ${IRIS_MASTER_PASSWORD}
+      UPTIME_KUMA_ADMIN_LANGUAGE: en
       # Optional integrations (set via GitHub secrets)
       GRAFANA_API_KEY: ${GRAFANA_API_KEY:-}
     ports:

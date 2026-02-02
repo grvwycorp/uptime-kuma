@@ -11,6 +11,10 @@ services:
       # Auto-configure embedded MariaDB (skips /setup-database wizard)
       UPTIME_KUMA_ENABLE_EMBEDDED_MARIADB: "1"
       UPTIME_KUMA_DB_TYPE: embedded-mariadb
+      # Auto-create admin user (skips /setup wizard)
+      UPTIME_KUMA_ADMIN_USERNAME: ${IRIS_PROBE_USER:-admin}
+      UPTIME_KUMA_ADMIN_PASSWORD: ${IRIS_PROBE_PASSWORD}
+      UPTIME_KUMA_ADMIN_LANGUAGE: en
       # Iris probe configuration
       IRIS_MODE: probe
       IRIS_PROBE_ID: ${HOSTNAME:-iris-probe}
