@@ -69,9 +69,7 @@ function initOtelMetrics() {
 const metricValues = new Map();
 
 /**
- * Record a metric value
- * Values are stored and read by observable gauge callbacks
- *
+ * Record a metric value. Values are stored and read by observable gauge callbacks.
  * @param {string} name Metric name (e.g., "monitor_status")
  * @param {number} value The value to record
  * @param {object} labels Labels for the metric
@@ -95,7 +93,6 @@ function recordMetric(name, value, labels) {
 
 /**
  * Remove metrics for a monitor (when monitor is deleted or stopped)
- *
  * @param {object} labels Labels identifying the monitor
  * @returns {void}
  */
@@ -122,8 +119,11 @@ function getMetricValues() {
     return metricValues;
 }
 
-// Set up observable gauge callbacks after initialization
-// These callbacks are called by the OTEL SDK when exporting metrics
+/**
+ * Set up observable gauge callbacks after initialization.
+ * These callbacks are called by the OTEL SDK when exporting metrics.
+ * @returns {void}
+ */
 function setupObservableCallbacks() {
     if (!isEnabled || !initialized || !meter) {
         return;
