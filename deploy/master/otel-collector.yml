@@ -35,10 +35,10 @@ exporters:
     verbosity: basic
 
   # Grafana Cloud OTLP exporter
-  otlphttp/grafana:
+  otlp_http/grafana:
     endpoint: https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
     headers:
-      Authorization: '${env:GRAFANA_OTLP_HEADERS}'
+      Authorization: 'Basic ${env:GRAFANA_OTLP_HEADERS}'
 
 service:
   pipelines:
@@ -50,7 +50,7 @@ service:
     metrics:
       receivers: [otlp, prometheus]
       processors: [memory_limiter, batch]
-      exporters: [debug, otlphttp/grafana]
+      exporters: [debug, otlp_http/grafana]
 
     logs:
       receivers: [otlp]
