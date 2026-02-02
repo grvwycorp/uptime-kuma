@@ -74,6 +74,8 @@ jobs:
           IRIS_MASTER_PASSWORD: ${{ secrets.IRIS_MASTER_PASSWORD }}
         run: |
           docker compose -p iris up -d --remove-orphans
+          # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
+          docker compose -p iris restart iris-otel || true
           sleep 5
           docker compose -p iris ps
 
