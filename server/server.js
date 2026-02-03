@@ -1742,8 +1742,11 @@ let needSetup = false;
         }
 
         // Iris: Check mode to determine if monitoring should run
-        const irisMode = process.env.IRIS_MODE || "probe";
-        if (irisMode === "master") {
+        // Supports: IRIS_MODE=master, IRIS_MODE=central, or legacy MASTER=true
+        const irisMode = (process.env.IRIS_MODE || "probe").toLowerCase();
+        const isMasterMode = ["master", "central"].includes(irisMode) ||
+                             process.env.MASTER === "true";
+        if (isMasterMode) {
             log.info("server", "Running in MASTER mode (UI only, monitoring disabled)");
         } else {
             log.info("server", `Running in PROBE mode (monitoring enabled, probe_id: ${process.env.IRIS_PROBE_ID || process.env.HOSTNAME || "unknown"})`);

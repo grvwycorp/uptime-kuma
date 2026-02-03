@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 
@@ -151,7 +152,9 @@ func (r *Reconciler) ComputeSyncPlan(
 	return plans
 }
 
-// ExecuteSyncPlan executes the sync operations against a probe.
+// ExecuteSyncPlan executes the sync operations against a probe with topological ordering.
+// Two-pass sync ensures groups are created before their children, and parent IDs are
+// remapped from master to probe-local IDs.
 // Returns statistics about the sync operation.
 func (r *Reconciler) ExecuteSyncPlan(
 	ctx context.Context,
@@ -162,43 +165,136 @@ func (r *Reconciler) ExecuteSyncPlan(
 ) (*SyncStats, error) {
 	stats := &SyncStats{}
 
+	// Separate plans by action type and monitor type for topological ordering
+	var groupCreates, childCreates, updates, deletes []SyncPlan
+
 	for _, plan := range plans {
+		switch plan.Action {
+		case ActionCreate:
+			if plan.Monitor.Type == "group" {
+				groupCreates = append(groupCreates, plan)
+			} else {
+				childCreates = append(childCreates, plan)
+			}
+		case ActionUpdate:
+			updates = append(updates, plan)
+		case ActionDelete:
+			deletes = append(deletes, plan)
+		}
+	}
+
+	// PASS 1: Create groups first (no parent dependencies)
+	for _, plan := range groupCreates {
 		select {
 		case <-ctx.Done():
 			return stats, ctx.Err()
 		default:
 		}
 
-		var err error
+		err := r.executeCreate(ctx, kumaClient, plan, mapping, dryRun)
+		if err != nil {
+			stats.Errors++
+			r.logger.Error("failed to create group",
+				"master_id", plan.MasterID,
+				"name", plan.Monitor.Name,
+				"error", err,
+			)
+		} else {
+			stats.Creates++
+		}
+	}
 
-		switch plan.Action {
-		case ActionCreate:
-			err = r.executeCreate(ctx, kumaClient, plan, mapping, dryRun)
-			if err == nil {
-				stats.Creates++
-			}
+	// PASS 2: Create children with remapped parent IDs
+	for _, plan := range childCreates {
+		select {
+		case <-ctx.Done():
+			return stats, ctx.Err()
+		default:
+		}
 
-		case ActionUpdate:
-			err = r.executeUpdate(ctx, kumaClient, plan, mapping, dryRun)
-			if err == nil {
-				stats.Updates++
-			}
-
-		case ActionDelete:
-			err = r.executeDelete(ctx, kumaClient, plan, mapping, dryRun)
-			if err == nil {
-				stats.Deletes++
+		// Remap parent ID from master to probe-local ID
+		if plan.Monitor.Parent.Valid {
+			masterParentID := plan.Monitor.Parent.Int64
+			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
+				plan.Monitor.Parent = sql.NullInt64{Int64: probeParentID, Valid: true}
+				r.logger.Debug("remapped parent ID",
+					"monitor", plan.Monitor.Name,
+					"master_parent_id", masterParentID,
+					"probe_parent_id", probeParentID,
+				)
+			} else {
+				r.logger.Warn("parent not found on probe, clearing parent reference",
+					"monitor", plan.Monitor.Name,
+					"master_parent_id", masterParentID,
+				)
+				plan.Monitor.Parent = sql.NullInt64{Valid: false}
 			}
 		}
 
+		err := r.executeCreate(ctx, kumaClient, plan, mapping, dryRun)
 		if err != nil {
 			stats.Errors++
-			r.logger.Error("sync operation failed",
-				"action", plan.Action.String(),
+			r.logger.Error("failed to create monitor",
+				"master_id", plan.MasterID,
+				"name", plan.Monitor.Name,
+				"error", err,
+			)
+		} else {
+			stats.Creates++
+		}
+	}
+
+	// PASS 3: Updates (also need parent ID remapping)
+	for _, plan := range updates {
+		select {
+		case <-ctx.Done():
+			return stats, ctx.Err()
+		default:
+		}
+
+		// Remap parent ID for updates as well
+		if plan.Monitor.Parent.Valid {
+			masterParentID := plan.Monitor.Parent.Int64
+			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
+				plan.Monitor.Parent = sql.NullInt64{Int64: probeParentID, Valid: true}
+			} else {
+				plan.Monitor.Parent = sql.NullInt64{Valid: false}
+			}
+		}
+
+		err := r.executeUpdate(ctx, kumaClient, plan, mapping, dryRun)
+		if err != nil {
+			stats.Errors++
+			r.logger.Error("failed to update monitor",
+				"master_id", plan.MasterID,
+				"probe_id", plan.ProbeID,
+				"name", plan.Monitor.Name,
+				"error", err,
+			)
+		} else {
+			stats.Updates++
+		}
+	}
+
+	// PASS 4: Deletes (process in reverse to delete children before parents)
+	for i := len(deletes) - 1; i >= 0; i-- {
+		plan := deletes[i]
+		select {
+		case <-ctx.Done():
+			return stats, ctx.Err()
+		default:
+		}
+
+		err := r.executeDelete(ctx, kumaClient, plan, mapping, dryRun)
+		if err != nil {
+			stats.Errors++
+			r.logger.Error("failed to delete monitor",
 				"master_id", plan.MasterID,
 				"probe_id", plan.ProbeID,
 				"error", err,
 			)
+		} else {
+			stats.Deletes++
 		}
 	}
 

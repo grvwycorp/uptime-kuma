@@ -278,6 +278,7 @@ type monitorHashData struct {
 	SystemServiceName                *string `json:"system_service_name,omitempty"`
 	Location                         *string `json:"location,omitempty"`
 	Protocol                         *string `json:"protocol,omitempty"`
+	Parent                           *int64  `json:"parent,omitempty"`
 }
 
 // nullStringPtr returns a pointer to the string value if valid, nil otherwise.
@@ -390,6 +391,7 @@ func (m *Monitor) ComputeHash() string {
 		SystemServiceName:                nullStringPtr(m.SystemServiceName),
 		Location:                         nullStringPtr(m.Location),
 		Protocol:                         nullStringPtr(m.Protocol),
+		Parent:                           nullInt64Ptr(m.Parent),
 	}
 
 	jsonData, _ := json.Marshal(data)
@@ -494,6 +496,10 @@ func (m *Monitor) ToKumaPayload() map[string]interface{} {
 	addNullString("system_service_name", m.SystemServiceName)
 	addNullString("location", m.Location)
 	addNullString("protocol", m.Protocol)
+
+	// Parent field for group relationships
+	// Note: This value will be remapped by the reconciler from master ID to probe local ID
+	addNullInt("parent", m.Parent)
 
 	// Boolean/int flags
 	payload["ignoreTls"] = m.IgnoreTLS == 1
