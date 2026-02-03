@@ -94,15 +94,15 @@ services:
       IRIS_SYNC_DB_NAME: iris
       IRIS_SYNC_DB_USER: iris
       IRIS_SYNC_DB_PASSWORD: ${DB_PASSWORD}
-      # Probe configuration (via Tailscale MagicDNS FQDNs)
+      # Probe configuration (via Tailscale IPs - MagicDNS not available in container)
       # YAML format embedded in env var
       IRIS_SYNC_PROBES: |
         - name: probe01
-          endpoint: http://probe01.tail605657.ts.net:3001
+          endpoint: http://100.97.5.70:3001
           username: ${IRIS_PROBE_USER:-admin}
           password: ${IRIS_PROBE_PASSWORD}
         - name: debian
-          endpoint: http://debian.tail605657.ts.net:3001
+          endpoint: http://100.87.62.9:3001
           username: ${IRIS_PROBE_USER:-admin}
           password: ${IRIS_PROBE_PASSWORD}
       # Sync settings
@@ -112,9 +112,6 @@ services:
       IRIS_SYNC_LOG_LEVEL: info
     volumes:
       - iris-sync-data:/app/data
-      # Mount host's resolv.conf to use Tailscale MagicDNS (100.100.100.100)
-      # Docker overrides /etc/resolv.conf even with network_mode: host
-      - /etc/resolv.conf:/etc/resolv.conf:ro
     depends_on:
       iris-db:
         condition: service_healthy
