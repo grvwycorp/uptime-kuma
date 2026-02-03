@@ -59,7 +59,7 @@ service:
 
   telemetry:
     logs:
-      level: info
+      level: debug
     metrics:
       level: detailed
       readers:

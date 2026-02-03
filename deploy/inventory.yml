@@ -13,6 +13,7 @@ masters:
       - iris-web (UI only, no monitoring)
       - iris-db (MariaDB)
       - iris-otel (OpenTelemetry collector)
+      - iris-sync (Monitor synchronization to probes)
 
   # Future HA:
   # - hostname: master02

@@ -76,6 +76,43 @@ services:
     networks:
       - iris-network
 
+  iris-sync:
+    build:
+      context: ../../iris-sync
+      dockerfile: Dockerfile
+    container_name: iris-sync
+    restart: unless-stopped
+    environment:
+      # Master DB connection (same network as iris-db)
+      IRIS_SYNC_DB_HOST: iris-db
+      IRIS_SYNC_DB_PORT: 3306
+      IRIS_SYNC_DB_NAME: iris
+      IRIS_SYNC_DB_USER: iris
+      IRIS_SYNC_DB_PASSWORD: ${DB_PASSWORD}
+      # Probe configuration (via Tailscale IPs from inventory.yml)
+      # YAML format embedded in env var
+      IRIS_SYNC_PROBES: |
+        - name: probe01
+          endpoint: http://100.97.5.70:3001
+          username: ${IRIS_PROBE_USER:-admin}
+          password: ${IRIS_PROBE_PASSWORD}
+        - name: debian
+          endpoint: http://100.87.62.9:3001
+          username: ${IRIS_PROBE_USER:-admin}
+          password: ${IRIS_PROBE_PASSWORD}
+      # Sync settings
+      IRIS_SYNC_INTERVAL: 5m
+      IRIS_SYNC_DELETE_ORPHANS: "true"
+      IRIS_SYNC_DRY_RUN: "false"
+      IRIS_SYNC_LOG_LEVEL: info
+    volumes:
+      - iris-sync-data:/app/data
+    depends_on:
+      iris-db:
+        condition: service_healthy
+    networks:
+      - iris-network
+
 secrets:
   db_root_password:
     file: ./secrets/db_root_password.txt
@@ -85,6 +122,7 @@ secrets:
 volumes:
   iris-web-data:
   iris-db-data:
+  iris-sync-data:
 
 networks:
   iris-network:

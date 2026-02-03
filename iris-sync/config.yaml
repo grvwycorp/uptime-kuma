@@ -1,0 +1,63 @@
+# iris-sync configuration
+# Synchronizes monitors from Master MariaDB to distributed Uptime Kuma probes
+
+# Master database (MariaDB) - Source of Truth
+master:
+  host: "master-mariadb.tailnet"
+  port: 3306
+  database: "uptime_kuma"
+  username: "iris_sync"
+  # Use password directly or password_file for secrets
+  password: "changeme"
+  # password_file: "/run/secrets/master_db_password"
+
+# Probe nodes - Uptime Kuma instances to sync monitors to
+probes:
+  - name: "probe-01"
+    endpoint: "http://100.64.0.10:3001"
+    username: "admin"
+    password: "changeme"
+    # password_file: "/run/secrets/probe01_password"
+    enabled: true
+    # Optional: filter monitors by type
+    # types: ["http", "ping", "port"]
+    # Optional: filter monitors by tag (requires tag associations)
+    # tags: ["production"]
+
+  - name: "probe-02"
+    endpoint: "http://100.64.0.11:3001"
+    username: "admin"
+    password: "changeme"
+    enabled: true
+
+  # Example of disabled probe
+  # - name: "probe-staging"
+  #   endpoint: "http://100.64.0.100:3001"
+  #   username: "admin"
+  #   password: "changeme"
+  #   enabled: false
+
+# Synchronization settings
+sync:
+  # How often to run sync (e.g., "30s", "5m", "1h")
+  interval: 5m
+
+  # Maximum concurrent probe syncs
+  concurrency: 3
+
+  # Timeout for individual Socket.IO operations
+  operation_timeout: 30s
+
+  # Delete monitors from probe that no longer exist in master
+  delete_orphans: true
+
+  # Dry run mode - log actions without executing them
+  dry_run: false
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log format: json (structured) or text (human-readable)
+  format: json

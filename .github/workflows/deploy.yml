@@ -73,6 +73,9 @@ jobs:
           GRAFANA_OTLP_HEADERS: ${{ secrets.GRAFANA_OTLP_HEADERS }}
           IRIS_MASTER_USER: ${{ secrets.IRIS_MASTER_USER }}
           IRIS_MASTER_PASSWORD: ${{ secrets.IRIS_MASTER_PASSWORD }}
+          # Probe credentials for iris-sync to authenticate with probes
+          IRIS_PROBE_USER: ${{ secrets.IRIS_PROBE_USER }}
+          IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
         run: |
           docker compose -p iris up -d --remove-orphans
           # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
@@ -80,7 +83,7 @@ jobs:
           sleep 5
           docker compose -p iris ps
 
-      - name: Health check
+      - name: Health check (iris-web)
         run: |
           for i in {1..30}; do
             if curl -sf http://localhost:3001 > /dev/null; then
@@ -93,6 +96,22 @@ jobs:
           echo "Health check failed"
           docker compose -p iris -f deploy/master/docker-compose.yml logs iris-web
           exit 1
+
+      - name: Health check (iris-sync)
+        run: |
+          # Wait for iris-sync to start and perform initial sync
+          sleep 15
+          # Check if container is running
+          if docker ps --format '{{.Names}}' | grep -q iris-sync; then
+            echo "iris-sync container is running"
+            # Show recent logs
+            echo "=== iris-sync logs (last 30 lines) ==="
+            docker logs iris-sync 2>&1 | tail -30
+          else
+            echo "Warning: iris-sync container not running"
+            docker compose -p iris -f deploy/master/docker-compose.yml logs iris-sync
+            # Don't fail deployment if sync isn't running (probes may not be up yet)
+          fi
 
       - name: Cleanup old images
         run: docker image prune -f
