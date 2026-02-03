@@ -6,7 +6,13 @@ const { R } = require("redbean-node");
 const { recordMetric, removeMetrics, isEnabled: otelEnabled } = require("./otel-metrics");
 
 // New metrics enforcer (uses label allowlist and resource attributes)
-const newMetrics = require("./lib/metrics");
+// Lazy load to handle case where module isn't deployed yet
+let newMetrics = null;
+try {
+    newMetrics = require("./lib/metrics");
+} catch (e) {
+    // Module not available - continue with legacy OTEL only
+}
 
 let monitorCertDaysRemaining = null;
 let monitorCertIsValid = null;
@@ -36,7 +42,7 @@ class Prometheus {
         // Record monitor info to the new metrics enforcer (for label joins)
         // This stores the high-cardinality labels separately from time-series data
         try {
-            if (newMetrics.isInitialized()) {
+            if (newMetrics?.isInitialized()) {
                 newMetrics.recordMonitorInfo(monitor.id, {
                     name: monitor.name,
                     url: monitor.url,
@@ -298,7 +304,7 @@ class Prometheus {
             // New metrics enforcer (with label allowlist)
             // This uses the lean label set: probe_id, monitor_id, monitor_type only
             try {
-                if (newMetrics.isInitialized()) {
+                if (newMetrics?.isInitialized()) {
                     newMetrics.recordCheck({
                         monitorId: this.monitorLabelValues.monitor_id,
                         monitorType: this.monitorLabelValues.monitor_type,
@@ -335,7 +341,7 @@ class Prometheus {
                 removeMetrics(this.monitorLabelValues);
             }
             // Also remove from new metrics enforcer
-            if (newMetrics.isInitialized()) {
+            if (newMetrics?.isInitialized()) {
                 newMetrics.removeMonitor(
                     this.monitorLabelValues.monitor_id,
                     this.monitorLabelValues.monitor_type
