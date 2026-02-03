@@ -8,6 +8,7 @@ masters:
     runner_labels: [self-hosted, master]
     tailscale_name: master01-hostup
     tailscale_ip: 100.121.116.41
+    tailscale_fqdn: master01-hostup.tail605657.ts.net
     location: frankfurt
     services:
       - iris-web (UI only, no monitoring)
@@ -28,6 +29,7 @@ probes:
     runner_labels: [self-hosted, probe]
     tailscale_name: probe01
     tailscale_ip: 100.97.5.70
+    tailscale_fqdn: probe01.tail605657.ts.net
     location: frankfurt
 
   - hostname: debian
@@ -35,6 +37,7 @@ probes:
     runner_labels: [self-hosted, probe]
     tailscale_name: debian
     tailscale_ip: 100.87.62.9
+    tailscale_fqdn: debian.tail605657.ts.net
     location: nuremberg
 
 # To add a new probe:

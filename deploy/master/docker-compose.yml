@@ -45,6 +45,9 @@ services:
     secrets:
       - db_root_password
       - db_password
+    ports:
+      # Expose to localhost only for iris-sync (host network mode)
+      - "127.0.0.1:3306:3306"
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -82,22 +85,24 @@ services:
       dockerfile: Dockerfile
     container_name: iris-sync
     restart: unless-stopped
+    # Host network mode to access Tailscale mesh for probe connectivity
+    network_mode: host
     environment:
-      # Master DB connection (same network as iris-db)
-      IRIS_SYNC_DB_HOST: iris-db
+      # Master DB connection (via localhost since we're on host network)
+      IRIS_SYNC_DB_HOST: 127.0.0.1
       IRIS_SYNC_DB_PORT: 3306
       IRIS_SYNC_DB_NAME: iris
       IRIS_SYNC_DB_USER: iris
       IRIS_SYNC_DB_PASSWORD: ${DB_PASSWORD}
-      # Probe configuration (via Tailscale IPs from inventory.yml)
+      # Probe configuration (via Tailscale MagicDNS FQDNs)
       # YAML format embedded in env var
       IRIS_SYNC_PROBES: |
         - name: probe01
-          endpoint: http://100.97.5.70:3001
+          endpoint: http://probe01.tail605657.ts.net:3001
           username: ${IRIS_PROBE_USER:-admin}
           password: ${IRIS_PROBE_PASSWORD}
         - name: debian
-          endpoint: http://100.87.62.9:3001
+          endpoint: http://debian.tail605657.ts.net:3001
           username: ${IRIS_PROBE_USER:-admin}
           password: ${IRIS_PROBE_PASSWORD}
       # Sync settings
@@ -110,8 +115,6 @@ services:
     depends_on:
       iris-db:
         condition: service_healthy
-    networks:
-      - iris-network
 
 secrets:
   db_root_password:
