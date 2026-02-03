@@ -150,8 +150,15 @@ func (c *KumaClient) Connect(ctx context.Context) error {
 	// Start ping goroutine
 	go c.pingLoop(time.Duration(handshake.PingInterval) * time.Millisecond)
 
-	// Wait for Socket.IO connect confirmation
-	time.Sleep(100 * time.Millisecond)
+	// Send Socket.IO CONNECT packet to join default namespace
+	// Format: 40 (Engine.IO MESSAGE + Socket.IO CONNECT)
+	if err := c.conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+		c.conn.Close()
+		return fmt.Errorf("failed to send namespace connect: %w", err)
+	}
+
+	// Wait for Socket.IO connect confirmation (server sends 40{"sid":"..."})
+	time.Sleep(200 * time.Millisecond)
 
 	return nil
 }
