@@ -1,9 +1,12 @@
 name: "Automatically close stale issues"
+
+# DISABLED for Iris fork - not needed, saves GitHub Actions minutes
+
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual only
   schedule:
-    - cron: "0 */6 * * *"
-#Run every 6 hours
+    - cron: "0 0 31 2 *"  # Feb 31 = never runs
+# Was: "0 */6 * * *" (every 6 hours)
 permissions: {}
 
 jobs:

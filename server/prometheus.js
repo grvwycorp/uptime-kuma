@@ -1,7 +1,12 @@
 const PrometheusClient = require("prom-client");
 const { log } = require("../src/util");
 const { R } = require("redbean-node");
+
+// Legacy OTEL metrics bridge (for backward compatibility)
 const { recordMetric, removeMetrics, isEnabled: otelEnabled } = require("./otel-metrics");
+
+// New metrics enforcer (uses label allowlist and resource attributes)
+const newMetrics = require("./lib/metrics");
 
 let monitorCertDaysRemaining = null;
 let monitorCertIsValid = null;
@@ -27,6 +32,23 @@ class Prometheus {
             monitor_hostname: monitor.hostname,
             monitor_port: monitor.port,
         };
+
+        // Record monitor info to the new metrics enforcer (for label joins)
+        // This stores the high-cardinality labels separately from time-series data
+        try {
+            if (newMetrics.isInitialized()) {
+                newMetrics.recordMonitorInfo(monitor.id, {
+                    name: monitor.name,
+                    url: monitor.url,
+                    hostname: monitor.hostname,
+                    port: monitor.port,
+                    type: monitor.type,
+                    tags: tags ? tags.map(t => t.name) : [],
+                });
+            }
+        } catch (e) {
+            log.debug("prometheus", "Error recording monitor info:", e.message);
+        }
     }
 
     /**
@@ -272,6 +294,27 @@ class Prometheus {
                 log.error("prometheus", "Caught error");
                 log.error("prometheus", e);
             }
+
+            // New metrics enforcer (with label allowlist)
+            // This uses the lean label set: probe_id, monitor_id, monitor_type only
+            try {
+                if (newMetrics.isInitialized()) {
+                    newMetrics.recordCheck({
+                        monitorId: this.monitorLabelValues.monitor_id,
+                        monitorType: this.monitorLabelValues.monitor_type,
+                        status: heartbeat.status,
+                        responseTime: typeof heartbeat.ping === "number" ? heartbeat.ping : -1,
+                        // Timing decomposition can be added here when available
+                        // timings: { dns: heartbeat.timing_dns, tcp: heartbeat.timing_tcp, tls: heartbeat.timing_tls },
+                        cert: tlsInfo ? {
+                            daysRemaining: tlsInfo.certInfo?.daysRemaining,
+                            isValid: tlsInfo.valid === true,
+                        } : undefined,
+                    });
+                }
+            } catch (e) {
+                log.debug("prometheus", "Error recording to new metrics enforcer:", e.message);
+            }
         }
     }
 
@@ -290,6 +333,13 @@ class Prometheus {
             // Also remove from OTEL if enabled
             if (otelEnabled) {
                 removeMetrics(this.monitorLabelValues);
+            }
+            // Also remove from new metrics enforcer
+            if (newMetrics.isInitialized()) {
+                newMetrics.removeMonitor(
+                    this.monitorLabelValues.monitor_id,
+                    this.monitorLabelValues.monitor_type
+                );
             }
         } catch (e) {
             console.error(e);

@@ -14,8 +14,9 @@ dayjs.extend(require("dayjs/plugin/customParseFormat"));
 // Load environment variables from `.env`
 require("dotenv").config();
 
-// Initialize OTEL SDK for probe metrics (must be early, before most imports)
-// Only activates on probes (IRIS_MODE=probe) with OTEL_EXPORTER_OTLP_ENDPOINT set
+// Legacy OTEL SDK initialization (kept for backward compatibility)
+// The new otel.js module is initialized after database is ready (see below)
+// which allows it to fetch the persistent probe UUID from SQLite
 require("./otel-init");
 
 // Check Node.js Version
@@ -233,6 +234,16 @@ let needSetup = false;
     await server.initAfterDatabaseReady();
     server.entryPage = await Settings.get("entryPage");
     await StatusPage.loadDomainMappingList();
+
+    // Initialize new OTEL SDK with resource attributes (requires database for probe ID)
+    log.debug("server", "Initializing OTEL SDK");
+    const otel = require("./otel");
+    await otel.init();
+
+    // Initialize new metrics enforcer (requires OTEL to be initialized first)
+    log.debug("server", "Initializing Metrics Enforcer");
+    const metrics = require("./lib/metrics");
+    await metrics.init();
 
     log.debug("server", "Initializing Prometheus");
     await Prometheus.init();

@@ -1,8 +1,10 @@
 name: Close Incorrect Issue
 
+# DISABLED for Iris fork - not needed, saves GitHub Actions minutes
+
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:  # Manual only
+  # Was: issues: [opened]
 permissions: {}
 
 jobs:
