@@ -110,6 +110,8 @@ services:
       IRIS_SYNC_DELETE_ORPHANS: "true"
       IRIS_SYNC_DRY_RUN: "false"
       IRIS_SYNC_LOG_LEVEL: info
+      # Increased timeout for login - afterLogin() can take >30s with many monitors
+      IRIS_SYNC_OPERATION_TIMEOUT: 120s
     volumes:
       - iris-sync-data:/app/data
     depends_on:
