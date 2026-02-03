@@ -112,6 +112,9 @@ services:
       IRIS_SYNC_LOG_LEVEL: info
     volumes:
       - iris-sync-data:/app/data
+      # Mount host's resolv.conf to use Tailscale MagicDNS (100.100.100.100)
+      # Docker overrides /etc/resolv.conf even with network_mode: host
+      - /etc/resolv.conf:/etc/resolv.conf:ro
     depends_on:
       iris-db:
         condition: service_healthy
