@@ -230,7 +230,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count(monitor_info_ratio{job=\"iris-probe\"})",
+          "expr": "count(count by (monitor_name) (monitor_info_ratio{job=\"iris-probe\"}))",
           "legendFormat": "Monitors",
           "refId": "A"
         }
@@ -320,7 +320,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\", monitor_type=\"http\"}\n* on(monitor_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\", monitor_type=\"http\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
           "legendFormat": "{{monitor_name}}",
           "refId": "A"
         }
@@ -403,7 +403,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
           "legendFormat": "{{monitor_name}} @ {{probe_id}}",
           "refId": "A"
         }
@@ -466,7 +466,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_cert_days_remaining_days{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_cert_days_remaining_days{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
           "legendFormat": "{{monitor_name}}",
           "refId": "A"
         }
@@ -557,7 +557,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_status_ratio{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_status_ratio{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
           "legendFormat": "{{monitor_name}}",
           "refId": "A",
           "instant": false,

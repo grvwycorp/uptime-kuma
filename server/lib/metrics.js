@@ -298,6 +298,12 @@ function recordMonitorInfo(monitorId, metadata) {
         tags: Array.isArray(metadata.tags) ? metadata.tags.join(",") : "",
     };
 
+    // Include probe_id so the info metric can be joined per-probe
+    // (monitor_id is local to each probe's database, not globally unique)
+    if (probeId) {
+        labels.probe_id = probeId;
+    }
+
     recordValue("monitorInfo", `info:${monitorId}`, 1, labels);
 }
 
