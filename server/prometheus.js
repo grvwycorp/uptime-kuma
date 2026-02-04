@@ -2,7 +2,8 @@ const PrometheusClient = require("prom-client");
 const { log } = require("../src/util");
 const { R } = require("redbean-node");
 
-// Legacy OTEL metrics bridge (for backward compatibility)
+// Legacy OTEL metrics bridge (disabled - replaced by server/otel.js + server/lib/metrics.js)
+// otel-init.js now exports isEnabled: false, so these are no-ops
 const { recordMetric, removeMetrics, isEnabled: otelEnabled } = require("./otel-metrics");
 
 // New metrics enforcer (uses label allowlist and resource attributes)
