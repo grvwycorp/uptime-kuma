@@ -53,6 +53,18 @@ function shouldEnable() {
         return false;
     }
 
+    // Validate endpoint URL
+    try {
+        const url = new URL(otlpEndpoint);
+        if (!url.hostname) {
+            log.error("otel", `OTEL endpoint has empty hostname: "${otlpEndpoint}" - check IRIS_MASTER_IP env var`);
+            return false;
+        }
+    } catch (e) {
+        log.error("otel", `OTEL endpoint is not a valid URL: "${otlpEndpoint}" - ${e.message}`);
+        return false;
+    }
+
     return true;
 }
 
@@ -149,16 +161,48 @@ async function init() {
 
     log.info("otel", `Using ${transportType} transport to endpoint: ${otlpEndpoint}`);
 
+    // Wrap exporter to log export results (the SDK is fire-and-forget by default)
+    let exportCount = 0;
+    let lastSuccess = null;
+    let lastError = null;
+    const originalExport = exporter.export.bind(exporter);
+    exporter.export = (metrics, resultCallback) => {
+        originalExport(metrics, (result) => {
+            exportCount++;
+            if (result.code === 0) {
+                lastSuccess = Date.now();
+                // Log first successful export, then every 20th (~5 min at 15s interval)
+                if (exportCount === 1 || exportCount % 20 === 0) {
+                    const seriesCount = metrics.scopeMetrics?.reduce(
+                        (sum, s) => sum + s.metrics.length, 0
+                    ) || 0;
+                    log.info("otel", `Export #${exportCount} OK (${seriesCount} metrics)`);
+                }
+            } else {
+                const errMsg = result.error?.message || "unknown error";
+                // Always log failures (but deduplicate consecutive identical errors)
+                if (errMsg !== lastError) {
+                    log.warn("otel", `Export #${exportCount} FAILED: ${errMsg}`);
+                    lastError = errMsg;
+                }
+            }
+            resultCallback(result);
+        });
+    };
+
     // Create MeterProvider with resource
+    const exportIntervalMillis = parseInt(process.env.OTEL_METRIC_EXPORT_INTERVAL) || 15000;
     meterProvider = new MeterProvider({
         resource: resource,
         readers: [
             new PeriodicExportingMetricReader({
                 exporter,
-                exportIntervalMillis: parseInt(process.env.OTEL_METRIC_EXPORT_INTERVAL) || 15000,
+                exportIntervalMillis,
             }),
         ],
     });
+
+    log.info("otel", `Export interval: ${exportIntervalMillis}ms`);
 
     // Set as global meter provider
     metrics.setGlobalMeterProvider(meterProvider);

@@ -164,6 +164,7 @@ jobs:
           HOSTNAME: ${{ steps.identity.outputs.hostname }}
           IRIS_PROBE_USER: ${{ secrets.IRIS_PROBE_USER }}
           IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
+          IRIS_MASTER_IP: ${{ secrets.IRIS_MASTER_IP }}
         run: |
           docker compose -p iris up -d --remove-orphans
           sleep 5
