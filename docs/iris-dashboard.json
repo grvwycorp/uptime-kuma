@@ -102,7 +102,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "id": 1,
       "options": {
         "colorMode": "value",
@@ -158,7 +158,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
       "id": 2,
       "options": {
         "colorMode": "value",
@@ -208,7 +208,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
       "id": 3,
       "options": {
         "colorMode": "value",
@@ -230,8 +230,58 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count(count by (monitor_name) (monitor_info_ratio{job=\"iris-probe\"}))",
+          "expr": "count(count by (monitor_name) (monitor_info_ratio{job=\"iris-probe\", service=~\"$service\"}))",
           "legendFormat": "Monitors",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Number of unique services (parent groups) with active monitors",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "title": "Services",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count(count by (service) (monitor_info_ratio{job=\"iris-probe\", service!=\"\"}))",
+          "legendFormat": "Services",
           "refId": "A"
         }
       ]
@@ -320,7 +370,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\", monitor_type=\"http\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\", monitor_type=\"http\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
           "legendFormat": "{{monitor_name}}",
           "refId": "A"
         }
@@ -403,7 +453,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
           "legendFormat": "{{monitor_name}} @ {{probe_id}}",
           "refId": "A"
         }
@@ -466,7 +516,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_cert_days_remaining_days{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_cert_days_remaining_days{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
           "legendFormat": "{{monitor_name}}",
           "refId": "A"
         }
@@ -557,7 +607,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_status_ratio{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\"}",
+          "expr": "monitor_status_ratio{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
           "legendFormat": "{{monitor_name}}",
           "refId": "A",
           "instant": false,
@@ -618,7 +668,31 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(monitor_info_ratio{job=\"iris-probe\"}, monitor_name)",
+        "definition": "label_values(monitor_info_ratio{job=\"iris-probe\"}, service)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "options": [],
+        "query": {
+          "query": "label_values(monitor_info_ratio{job=\"iris-probe\"}, service)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(monitor_info_ratio{job=\"iris-probe\", service=~\"$service\"}, monitor_name)",
         "hide": 0,
         "includeAll": true,
         "label": "Monitor",
@@ -626,7 +700,7 @@
         "name": "monitor_name",
         "options": [],
         "query": {
-          "query": "label_values(monitor_info_ratio{job=\"iris-probe\"}, monitor_name)",
+          "query": "label_values(monitor_info_ratio{job=\"iris-probe\", service=~\"$service\"}, monitor_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

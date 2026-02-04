@@ -28,8 +28,9 @@ class Prometheus {
     /**
      * @param {object} monitor Monitor object to monitor
      * @param {Array<{name:string,value:?string}>} tags Tags to add to the monitor
+     * @param {string} [serviceName=""] Parent group name for service label
      */
-    constructor(monitor, tags) {
+    constructor(monitor, tags, serviceName = "") {
         this.monitorLabelValues = {
             ...this.mapTagsToLabels(tags),
             monitor_id: monitor.id,
@@ -51,6 +52,7 @@ class Prometheus {
                     port: monitor.port,
                     type: monitor.type,
                     tags: tags ? tags.map(t => t.name) : [],
+                    service: serviceName,
                 });
             }
         } catch (e) {

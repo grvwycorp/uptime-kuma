@@ -43,6 +43,15 @@ const ALLOWED_LABELS = new Set([
     "monitor_type",
 ]);
 
+// Monitor types that don't perform actual network checks.
+// These produce synthetic response times (check() overhead) not real latencies,
+// so they are excluded from all metrics to avoid noise.
+const NON_NETWORK_TYPES = new Set([
+    "group",    // Aggregates child monitor status, no outbound request
+    "push",     // Waits for external heartbeat push, no outbound request
+    "manual",   // Manually set status, no outbound request
+]);
+
 // Metric storage for observable gauges
 const metricValues = new Map();
 
@@ -232,6 +241,13 @@ function recordValue(gaugeKey, metricKey, value, labels) {
  */
 function recordCheck(params) {
     const { monitorId, monitorType, status, responseTime, timings, cert } = params;
+
+    // Skip non-network monitor types entirely — their "response times"
+    // are just check() computation overhead, not real network latencies
+    if (NON_NETWORK_TYPES.has(monitorType)) {
+        return;
+    }
+
     const labels = buildBaseLabels(monitorId, monitorType);
     const labelKey = `${monitorId}:${monitorType}`;
 
@@ -282,9 +298,16 @@ function recordCheck(params) {
  * @param {number|string} [metadata.port] Target port
  * @param {string} metadata.type Monitor type
  * @param {string[]} [metadata.tags] Tags array
+ * @param {string} [metadata.service] Parent group name (service)
  */
 function recordMonitorInfo(monitorId, metadata) {
     if (!initialized || !otel.isEnabled()) {
+        return;
+    }
+
+    // Skip non-network monitor types — they are organizational containers,
+    // not real monitoring targets
+    if (NON_NETWORK_TYPES.has(String(metadata.type))) {
         return;
     }
 
@@ -296,6 +319,7 @@ function recordMonitorInfo(monitorId, metadata) {
         monitor_port: String(metadata.port || ""),
         monitor_type: String(metadata.type || "unknown"),
         tags: Array.isArray(metadata.tags) ? metadata.tags.join(",") : "",
+        service: String(metadata.service || ""),
     };
 
     // Include probe_id so the info metric can be joined per-probe

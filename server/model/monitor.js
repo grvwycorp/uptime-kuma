@@ -417,7 +417,15 @@ class Monitor extends BeanModel {
         this.rootCertificates = rootCertificates;
 
         try {
-            this.prometheus = new Prometheus(this, await this.getTags());
+            // Resolve parent group name for service label in metrics
+            let serviceName = "";
+            if (this.parent) {
+                const parentMonitor = await Monitor.getParent(this.id);
+                if (parentMonitor) {
+                    serviceName = parentMonitor.name;
+                }
+            }
+            this.prometheus = new Prometheus(this, await this.getTags(), serviceName);
         } catch (e) {
             log.error("prometheus", "Please submit an issue to our GitHub repo. Prometheus update error: ", e.message);
         }
