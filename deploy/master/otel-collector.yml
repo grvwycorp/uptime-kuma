@@ -6,18 +6,9 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  # Scrape Prometheus metrics from iris-web
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'iris-web'
-          scrape_interval: 30s
-          metrics_path: /metrics
-          basic_auth:
-            username: '${env:IRIS_METRICS_USER}'
-            password: '${env:IRIS_METRICS_PASSWORD}'
-          static_configs:
-            - targets: ['iris-web:3001']
+  # Legacy Prometheus scraper removed - was creating duplicate metrics
+  # with job="unknown_service:node" and high-cardinality labels.
+  # All metrics now flow through OTLP push from probes (job="iris-probe").
 
 processors:
   batch:
@@ -48,7 +39,7 @@ service:
       exporters: [debug]
 
     metrics:
-      receivers: [otlp, prometheus]
+      receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [debug, otlp_http/grafana]
 
