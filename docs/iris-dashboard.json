@@ -370,7 +370,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\", monitor_type=\"http\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
+          "expr": "max by (monitor_id, probe_id) (monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\", monitor_type=\"http\"})\n* on(monitor_id, probe_id) group_left(monitor_name)\nmax by (monitor_id, probe_id, monitor_name) (monitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"})",
           "legendFormat": "{{monitor_name}}",
           "refId": "A"
         }
@@ -453,7 +453,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
+          "expr": "max by (monitor_id, probe_id) (monitor_response_time_milliseconds{job=\"iris-probe\", probe_id=~\"$probe\"})\n* on(monitor_id, probe_id) group_left(monitor_name)\nmax by (monitor_id, probe_id, monitor_name) (monitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"})",
           "legendFormat": "{{monitor_name}} @ {{probe_id}}",
           "refId": "A"
         }
@@ -516,7 +516,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_cert_days_remaining_days{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
+          "expr": "max by (monitor_id, probe_id) (monitor_cert_days_remaining_days{job=\"iris-probe\", probe_id=~\"$probe\"})\n* on(monitor_id, probe_id) group_left(monitor_name)\nmax by (monitor_id, probe_id, monitor_name) (monitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"})",
           "legendFormat": "{{monitor_name}}",
           "refId": "A"
         }
@@ -607,7 +607,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "monitor_status_ratio{job=\"iris-probe\", probe_id=~\"$probe\"}\n* on(monitor_id, probe_id) group_left(monitor_name)\nmonitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"}",
+          "expr": "max by (monitor_id, probe_id) (monitor_status_ratio{job=\"iris-probe\", probe_id=~\"$probe\"})\n* on(monitor_id, probe_id) group_left(monitor_name)\nmax by (monitor_id, probe_id, monitor_name) (monitor_info_ratio{job=\"iris-probe\", monitor_name=~\"$monitor_name\", service=~\"$service\"})",
           "legendFormat": "{{monitor_name}}",
           "refId": "A",
           "instant": false,
