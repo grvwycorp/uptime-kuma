@@ -42,6 +42,9 @@
                             </span>
                             <div class="flex-fill text-truncate" style="min-width: 0">
                                 <div class="text-truncate">{{ monitor.name }}</div>
+                                <div v-if="depth > 1 && monitor.pathName" class="text-muted text-truncate" style="font-size: 0.75em; line-height: 1.2; opacity: 0.7;">
+                                    {{ monitor.pathName }}
+                                </div>
                                 <div v-if="monitor.tags.length > 0" class="tags gap-1">
                                     <Tag v-for="tag in monitor.tags" :key="tag" :item="tag" :size="'sm'" />
                                 </div>
@@ -163,8 +166,9 @@ export default {
             return this.sortedChildMonitorList.length > 0;
         },
         depthMargin() {
+            const cappedDepth = Math.min(this.depth, 5);
             return {
-                marginLeft: `${20 * this.depth}px`,
+                marginLeft: `${20 * cappedDepth}px`,
             };
         },
     },
@@ -263,6 +267,11 @@ export default {
 
             const draggedMonitor = this.$root.monitorList[draggedMonitorId];
             if (!draggedMonitor) {
+                return;
+            }
+
+            // Prevent circular reference: can't drop a group into its own descendant
+            if (draggedMonitor.childrenIDs && draggedMonitor.childrenIDs.includes(this.monitor.id)) {
                 return;
             }
 

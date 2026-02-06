@@ -774,6 +774,14 @@ let needSetup = false;
                 }
                 bean.user_id = socket.userID;
 
+                // Enforce maximum nesting depth
+                if (bean.parent !== null && bean.parent !== undefined) {
+                    const depth = await Monitor.getNestingDepth(bean.parent);
+                    if (depth + 1 > 10) {
+                        throw new Error("Monitor nesting depth cannot exceed 10 levels");
+                    }
+                }
+
                 bean.validate();
 
                 await R.store(bean);
@@ -821,6 +829,12 @@ let needSetup = false;
                     const childIDs = await Monitor.getAllChildrenIDs(monitor.id);
                     if (childIDs.includes(monitor.parent)) {
                         throw new Error("Invalid Monitor Group");
+                    }
+
+                    // Enforce maximum nesting depth
+                    const depth = await Monitor.getNestingDepth(monitor.parent);
+                    if (depth + 1 > 10) {
+                        throw new Error("Monitor nesting depth cannot exceed 10 levels");
                     }
                 }
 

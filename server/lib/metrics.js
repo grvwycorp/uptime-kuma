@@ -365,7 +365,8 @@ function recordCheck(params) {
  * @param {number|string} [metadata.port] Target port
  * @param {string} metadata.type Monitor type
  * @param {string[]} [metadata.tags] Tags array
- * @param {string} [metadata.service] Parent group name (service)
+ * @param {string} metadata.service Top-level ancestor group name (service)
+ * @param {string} metadata.subService Immediate parent group name (sub_service)
  */
 function recordMonitorInfo(monitorId, metadata) {
     if (!initialized || !otel.isEnabled()) {
@@ -387,6 +388,7 @@ function recordMonitorInfo(monitorId, metadata) {
         monitor_type: String(metadata.type || "unknown"),
         tags: Array.isArray(metadata.tags) ? metadata.tags.join(",") : "",
         service: String(metadata.service || ""),
+        sub_service: String(metadata.subService || ""),
     };
 
     // Include probe_id so the info metric can be joined per-probe

@@ -419,15 +419,29 @@ class Monitor extends BeanModel {
         this.rootCertificates = rootCertificates;
 
         try {
-            // Resolve parent group name for service label in metrics
+            // Resolve service labels for metrics:
+            // service = top-level ancestor group name
+            // subService = immediate parent group name (if different from service)
             let serviceName = "";
+            let subServiceName = "";
             if (this.parent) {
-                const parentMonitor = await Monitor.getParent(this.id);
-                if (parentMonitor) {
-                    serviceName = parentMonitor.name;
+                const immediateParent = await Monitor.getParent(this.id);
+                if (immediateParent) {
+                    // Walk up to root ancestor
+                    let rootAncestor = immediateParent;
+                    let next = await Monitor.getParent(rootAncestor.id);
+                    while (next !== null) {
+                        rootAncestor = next;
+                        next = await Monitor.getParent(rootAncestor.id);
+                    }
+                    serviceName = rootAncestor.name;
+                    // sub_service = immediate parent if different from root
+                    if (immediateParent.id !== rootAncestor.id) {
+                        subServiceName = immediateParent.name;
+                    }
                 }
             }
-            this.prometheus = new Prometheus(this, await this.getTags(), serviceName);
+            this.prometheus = new Prometheus(this, await this.getTags(), serviceName, subServiceName);
         } catch (e) {
             log.error("prometheus", "Please submit an issue to our GitHub repo. Prometheus update error: ", e.message);
         }
@@ -1883,7 +1897,161 @@ class Monitor extends BeanModel {
     }
 
     /**
-     * prepare preloaded data for efficient access
+     * Build an in-memory tree from monitor data using a single DB query.
+     * Replaces O(n*depth) recursive queries with O(n) in-memory construction.
+     * @param {number[]} monitorIDs IDs of monitors to process
+     * @returns {Promise<object>} Tree data: { parentMap, childrenMap, activeMap, nameMap }
+     */
+    static async buildMonitorTree(monitorIDs) {
+        if (monitorIDs.length === 0) {
+            return {
+                parentMap: new Map(),
+                childrenMap: new Map(),
+                activeMap: new Map(),
+                nameMap: new Map(),
+            };
+        }
+
+        const placeholders = monitorIDs.map(() => "?").join(",");
+        const rows = await R.getAll(
+            `SELECT id, parent, active, name FROM monitor WHERE id IN (${placeholders})`,
+            monitorIDs
+        );
+
+        const parentMap = new Map();
+        const childrenMap = new Map();
+        const activeMap = new Map();
+        const nameMap = new Map();
+
+        for (const row of rows) {
+            parentMap.set(row.id, row.parent);
+            activeMap.set(row.id, row.active);
+            nameMap.set(row.id, row.name);
+
+            if (!childrenMap.has(row.id)) {
+                childrenMap.set(row.id, []);
+            }
+
+            if (row.parent !== null) {
+                if (!childrenMap.has(row.parent)) {
+                    childrenMap.set(row.parent, []);
+                }
+                childrenMap.get(row.parent).push(row.id);
+            }
+        }
+
+        return { parentMap, childrenMap, activeMap, nameMap };
+    }
+
+    /**
+     * Compute all descendant IDs from an in-memory tree using iterative DFS.
+     * @param {number} monitorID Monitor to get descendants for
+     * @param {Map<number, number[]>} childrenMap Map of monitorID -> [childIDs]
+     * @returns {number[]} All descendant IDs
+     */
+    static getAllChildrenIDsFromTree(monitorID, childrenMap) {
+        const result = [];
+        const stack = [...(childrenMap.get(monitorID) || [])];
+        while (stack.length > 0) {
+            const id = stack.pop();
+            result.push(id);
+            const children = childrenMap.get(id) || [];
+            for (const child of children) {
+                stack.push(child);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Compute full path from in-memory tree by walking up the parent chain.
+     * @param {number} monitorID Monitor to get path for
+     * @param {Map<number, number|null>} parentMap Map of monitorID -> parentID
+     * @param {Map<number, string>} nameMap Map of monitorID -> name
+     * @returns {string[]} Path array from root to monitor
+     */
+    static getPathFromTree(monitorID, parentMap, nameMap) {
+        const path = [];
+        let currentID = monitorID;
+        while (currentID !== null && currentID !== undefined) {
+            path.unshift(nameMap.get(currentID) || "");
+            currentID = parentMap.get(currentID);
+        }
+        return path;
+    }
+
+    /**
+     * Check if all ancestors are active from in-memory tree.
+     * @param {number} monitorID Monitor to check
+     * @param {Map<number, number|null>} parentMap Map of monitorID -> parentID
+     * @param {Map<number, number>} activeMap Map of monitorID -> active (0 or 1)
+     * @returns {boolean} Whether all parent monitors are active
+     */
+    static isParentActiveFromTree(monitorID, parentMap, activeMap) {
+        let currentID = parentMap.get(monitorID);
+        while (currentID !== null && currentID !== undefined) {
+            if (!activeMap.get(currentID)) {
+                return false;
+            }
+            currentID = parentMap.get(currentID);
+        }
+        return true;
+    }
+
+    /**
+     * Batch check maintenance status for multiple monitors.
+     * Uses a single DB query + in-memory parent chain traversal.
+     * @param {number[]} monitorIDs All monitor IDs
+     * @param {Map<number, number|null>} parentMap In-memory parent map
+     * @returns {Promise<Map<number, boolean>>} Map of monitorID -> isUnderMaintenance
+     */
+    static async batchIsUnderMaintenance(monitorIDs, parentMap) {
+        const result = new Map();
+        if (monitorIDs.length === 0) {
+            return result;
+        }
+
+        // Batch fetch all maintenance associations in one query
+        const placeholders = monitorIDs.map(() => "?").join(",");
+        const maintenanceRows = await R.getAll(
+            `SELECT monitor_id, maintenance_id FROM monitor_maintenance WHERE monitor_id IN (${placeholders})`,
+            monitorIDs
+        );
+
+        // Build set of monitors that are directly under active maintenance
+        const activeMaintenanceMonitors = new Set();
+        const server = UptimeKumaServer.getInstance();
+
+        for (const row of maintenanceRows) {
+            if (activeMaintenanceMonitors.has(row.monitor_id)) {
+                continue;
+            }
+            const maintenance = server.getMaintenance(row.maintenance_id);
+            if (maintenance && (await maintenance.isUnderMaintenance())) {
+                activeMaintenanceMonitors.add(row.monitor_id);
+            }
+        }
+
+        // For each monitor: check self and all ancestors
+        for (const monitorID of monitorIDs) {
+            let underMaintenance = false;
+            let currentID = monitorID;
+            while (currentID !== null && currentID !== undefined) {
+                if (activeMaintenanceMonitors.has(currentID)) {
+                    underMaintenance = true;
+                    break;
+                }
+                currentID = parentMap.get(currentID);
+            }
+            result.set(monitorID, underMaintenance);
+        }
+
+        return result;
+    }
+
+    /**
+     * Prepare preloaded data for efficient access.
+     * Uses an in-memory tree to avoid O(n*depth) recursive DB queries.
      * @param {Array} monitorData IDs & active field of monitor to get
      * @returns {Promise<LooseObject<any>>} object
      */
@@ -1898,19 +2066,29 @@ class Monitor extends BeanModel {
 
         if (monitorData.length > 0) {
             const monitorIDs = monitorData.map((monitor) => monitor.id);
+
+            // These are already batched with IN (...) queries — keep as-is
             const notifications = await Monitor.getMonitorNotification(monitorIDs);
             const tags = await Monitor.getMonitorTag(monitorIDs);
-            const maintenanceStatuses = await Promise.all(
-                monitorData.map((monitor) => Monitor.isUnderMaintenance(monitor.id))
-            );
-            const childrenIDs = await Promise.all(monitorData.map((monitor) => Monitor.getAllChildrenIDs(monitor.id)));
-            const activeStatuses = await Promise.all(
-                monitorData.map((monitor) => Monitor.isActive(monitor.id, monitor.active))
-            );
-            const forceInactiveStatuses = await Promise.all(
-                monitorData.map((monitor) => Monitor.isParentActive(monitor.id))
-            );
-            const paths = await Promise.all(monitorData.map((monitor) => Monitor.getAllPath(monitor.id, monitor.name)));
+
+            // Build in-memory tree: 1 query instead of O(n*depth) recursive queries
+            const tree = await Monitor.buildMonitorTree(monitorIDs);
+
+            // Batch maintenance check: 1 query + in-memory parent traversal
+            const maintenanceStatuses = await Monitor.batchIsUnderMaintenance(monitorIDs, tree.parentMap);
+
+            // Compute all derived data from tree (O(n) total)
+            for (const monitor of monitorData) {
+                childrenIDsMap.set(monitor.id, Monitor.getAllChildrenIDsFromTree(monitor.id, tree.childrenMap));
+
+                const parentActive = Monitor.isParentActiveFromTree(monitor.id, tree.parentMap, tree.activeMap);
+                activeStatusMap.set(monitor.id, monitor.active === 1 && parentActive);
+                forceInactiveMap.set(monitor.id, !parentActive);
+
+                pathsMap.set(monitor.id, Monitor.getPathFromTree(monitor.id, tree.parentMap, tree.nameMap));
+
+                maintenanceStatusMap.set(monitor.id, maintenanceStatuses.get(monitor.id) || false);
+            }
 
             notifications.forEach((row) => {
                 if (!notificationsMap.has(row.monitor_id)) {
@@ -1930,26 +2108,6 @@ class Monitor extends BeanModel {
                     name: row.name,
                     color: row.color,
                 });
-            });
-
-            monitorData.forEach((monitor, index) => {
-                maintenanceStatusMap.set(monitor.id, maintenanceStatuses[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                childrenIDsMap.set(monitor.id, childrenIDs[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                activeStatusMap.set(monitor.id, activeStatuses[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                forceInactiveMap.set(monitor.id, !forceInactiveStatuses[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                pathsMap.set(monitor.id, paths[index]);
             });
         }
 
@@ -2004,10 +2162,6 @@ class Monitor extends BeanModel {
      */
     static async getAllPath(monitorID, name) {
         const path = [name];
-
-        if (this.parent === null) {
-            return path;
-        }
 
         let parent = await Monitor.getParent(monitorID);
         while (parent !== null) {
@@ -2106,6 +2260,26 @@ class Monitor extends BeanModel {
 
         const parentActive = await Monitor.isParentActive(parent.id);
         return parent.active && parentActive;
+    }
+
+    /**
+     * Gets the nesting depth of a parent chain starting from a given parent ID.
+     * Returns 0 if parentID is null, 1 if the parent has no parent, etc.
+     * @param {number|null} parentID ID of the parent monitor (or null)
+     * @returns {Promise<number>} Nesting depth
+     */
+    static async getNestingDepth(parentID) {
+        let depth = 0;
+        let currentID = parentID;
+        while (currentID !== null && currentID !== undefined) {
+            depth++;
+            const row = await R.getRow("SELECT parent FROM monitor WHERE id = ?", [currentID]);
+            if (!row) {
+                break;
+            }
+            currentID = row.parent;
+        }
+        return depth;
     }
 
     /**
