@@ -1764,6 +1764,20 @@ let needSetup = false;
             await startMonitors();
         }
 
+        // Iris: Periodically update active monitor count gauge
+        const irisMetrics = require("./lib/metrics");
+        setInterval(() => {
+            const typeCounts = new Map();
+            for (const id in server.monitorList) {
+                const monitor = server.monitorList[id];
+                if (monitor.active !== false && monitor.active !== 0) {
+                    const mType = monitor.type || "unknown";
+                    typeCounts.set(mType, (typeCounts.get(mType) || 0) + 1);
+                }
+            }
+            irisMetrics.updateActiveMonitors(typeCounts);
+        }, 15000);
+
         // Put this here. Start background jobs after the db and server is ready to prevent clear up during db migration.
         await initBackgroundJobs();
 

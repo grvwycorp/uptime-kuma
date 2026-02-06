@@ -63,6 +63,7 @@ const zlib = require("node:zlib");
 const { promisify } = require("node:util");
 const brotliCompress = promisify(zlib.brotliCompress);
 const DomainExpiry = require("./domain_expiry");
+const irisMetrics = require("../lib/metrics");
 
 const rootCertificates = rootCertificatesFingerprints();
 
@@ -413,6 +414,7 @@ class Monitor extends BeanModel {
     async start(io) {
         let previousBeat = null;
         let retries = 0;
+        let beatStartHrtime = process.hrtime.bigint();
 
         this.rootCertificates = rootCertificates;
 
@@ -431,6 +433,7 @@ class Monitor extends BeanModel {
         }
 
         const beat = async () => {
+            beatStartHrtime = process.hrtime.bigint();
             let beatInterval = this.interval;
 
             if (!beatInterval) {
@@ -967,6 +970,10 @@ class Monitor extends BeanModel {
                     bean.msg = error.message;
                 }
 
+                // Iris usage metric: classify and count the error
+                const errorCategory = irisMetrics.classifyError(error, this.type, bean.msg);
+                irisMetrics.incrementCheckError(this.type, errorCategory);
+
                 if (this.getSaveErrorResponse() && error?.response?.data !== undefined) {
                     await this.saveResponseData(bean, error.response.data);
                 }
@@ -1005,6 +1012,10 @@ class Monitor extends BeanModel {
             }
 
             bean.retries = retries;
+
+            // Iris usage metric: count every check attempt
+            const statusStr = bean.status === UP ? "up" : bean.status === DOWN ? "down" : bean.status === PENDING ? "pending" : "maintenance";
+            irisMetrics.incrementCheckTotal(this.type, statusStr);
 
             log.debug("monitor", `[${this.name}] Check isImportant`);
             let isImportant = Monitor.isImportantBeat(isFirstBeat, previousBeat?.status, bean.status);
@@ -1118,12 +1129,21 @@ class Monitor extends BeanModel {
             const data1y = uptimeCalculator.get1Year();
             this.prometheus?.update(bean, tlsInfo, { data24h, data30d, data1y });
 
+            // Iris performance metric: full beat cycle duration
+            const beatDurationSec = Number(process.hrtime.bigint() - beatStartHrtime) / 1e9;
+            irisMetrics.recordCheckDuration(this.type, beatDurationSec);
+
             previousBeat = bean;
 
             if (!this.isStop) {
                 log.debug("monitor", `[${this.name}] SetTimeout for next check.`);
 
                 let intervalRemainingMs = Math.max(1, beatInterval * 1000 - dayjs().diff(dayjs.utc(bean.time)));
+
+                // Iris performance metric: scheduler drift (how late the check fired)
+                const actualElapsedMs = dayjs().diff(dayjs.utc(bean.time));
+                const driftSeconds = Math.max(0, (actualElapsedMs - beatInterval * 1000)) / 1000;
+                irisMetrics.recordSchedulerDrift(this.type, driftSeconds);
 
                 log.debug("monitor", `[${this.name}] Next heartbeat in: ${intervalRemainingMs}ms`);
 
@@ -1141,6 +1161,11 @@ class Monitor extends BeanModel {
             try {
                 await beat();
             } catch (e) {
+                // Iris metrics: record partial duration and unknown error for crashed beats
+                const crashDurationSec = Number(process.hrtime.bigint() - beatStartHrtime) / 1e9;
+                irisMetrics.recordCheckDuration(this.type, crashDurationSec);
+                irisMetrics.incrementCheckError(this.type, "unknown");
+
                 console.trace(e);
                 UptimeKumaServer.errorLog(e, false);
                 log.error("monitor", "Please report to https://github.com/louislam/uptime-kuma/issues");
@@ -1549,14 +1574,23 @@ class Monitor extends BeanModel {
             }
 
             for (let notification of notificationList) {
+                let notificationConfig;
+                try {
+                    notificationConfig = JSON.parse(notification.config);
+                } catch (e) {
+                    log.error("monitor", "Cannot parse notification config for " + notification.name);
+                    continue;
+                }
                 try {
                     await Notification.send(
-                        JSON.parse(notification.config),
+                        notificationConfig,
                         msg,
                         monitor.toJSON(preloadData, false),
                         heartbeatJSON
                     );
+                    irisMetrics.incrementNotificationSend(notificationConfig.type, "success");
                 } catch (e) {
+                    irisMetrics.incrementNotificationSend(notificationConfig.type, "failure");
                     log.error("monitor", "Cannot send notification to " + notification.name);
                     log.error("monitor", e);
                 }

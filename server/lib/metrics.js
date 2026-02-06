@@ -52,11 +52,31 @@ const NON_NETWORK_TYPES = new Set([
     "manual",   // Manually set status, no outbound request
 ]);
 
+// Error category enum for classifyError()
+const ERROR_CATEGORIES = [
+    "timeout", "connection_refused", "dns_resolution",
+    "tls_certificate", "http_client_error", "http_server_error",
+    "authentication", "content_mismatch", "database_error", "unknown",
+];
+
+// Monitor types whose errors map to "database_error" by default
+const DB_MONITOR_TYPES = new Set([
+    "postgres", "mysql", "mongodb", "redis", "mssql",
+]);
+
 // Metric storage for observable gauges
 const metricValues = new Map();
 
-// Gauge instruments
+// Storage for active monitor counts (observable gauge)
+const activeMonitorCounts = new Map();
+
+// Gauge instruments (observable / pull-based)
 let gauges = {};
+
+// Counter and Histogram instruments (push-based)
+let counters = {};
+let histograms = {};
+
 let initialized = false;
 let probeId = null;
 
@@ -156,13 +176,60 @@ async function init() {
         unit: "1",
     });
 
+    // --- Usage & Performance Metrics (push-based) ---
+
+    // Counters
+    counters.checkTotal = meter.createCounter("iris_check_total", {
+        description: "Total number of check executions",
+        unit: "{check}",
+    });
+
+    counters.checkErrorTotal = meter.createCounter("iris_check_error_total", {
+        description: "Total number of check errors by category",
+        unit: "{error}",
+    });
+
+    counters.notificationSendTotal = meter.createCounter("iris_notification_send_total", {
+        description: "Total notification send attempts by provider and result",
+        unit: "{notification}",
+    });
+
+    // Histograms
+    histograms.checkDuration = meter.createHistogram("iris_check_duration_seconds", {
+        description: "Full beat cycle duration including DB writes and socket emit",
+        unit: "s",
+        advice: {
+            explicitBucketBoundaries: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30],
+        },
+    });
+
+    histograms.schedulerDrift = meter.createHistogram("iris_scheduler_drift_seconds", {
+        description: "How late each check fires relative to its expected schedule",
+        unit: "s",
+        advice: {
+            explicitBucketBoundaries: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60],
+        },
+    });
+
+    // Observable gauge for active monitor count
+    gauges.monitorActiveCount = meter.createObservableGauge("iris_monitor_active_count", {
+        description: "Number of active monitors per probe and type",
+        unit: "{monitor}",
+    });
+
     // Register batch observable callback
     meter.addBatchObservableCallback((observableResult) => {
+        // Existing outcome metric gauges
         for (const [, data] of metricValues) {
             const gauge = gauges[data.gaugeKey];
             if (gauge) {
                 observableResult.observe(gauge, data.value, data.labels);
             }
+        }
+
+        // Active monitor counts
+        for (const [, data] of activeMonitorCounts) {
+            observableResult.observe(gauges.monitorActiveCount, data.value, data.labels);
         }
     }, Object.values(gauges));
 
@@ -373,6 +440,190 @@ function removeMonitor(monitorId, monitorType) {
     }
 }
 
+// --- Usage & Performance Metric Functions (push-based) ---
+
+/**
+ * Build labels for fleet-level metrics (no monitor_id).
+ * @param {object} extraLabels Additional labels to include
+ * @returns {object} Labels with probe_id + extras
+ */
+function buildFleetLabels(extraLabels) {
+    const labels = {};
+    if (probeId) {
+        labels.probe_id = probeId;
+    }
+    Object.assign(labels, extraLabels);
+    return labels;
+}
+
+/**
+ * Increment the iris_check_total counter.
+ * @param {string} monitorType Monitor type (http, tcp, ping, etc.)
+ * @param {string} status Status enum: "up", "down", "pending", "maintenance"
+ * @returns {void}
+ */
+function incrementCheckTotal(monitorType, status) {
+    if (!initialized || !otel.isEnabled() || !counters.checkTotal) {
+        return;
+    }
+    counters.checkTotal.add(1, buildFleetLabels({
+        monitor_type: String(monitorType || "unknown"),
+        status: String(status),
+    }));
+}
+
+/**
+ * Record the full beat cycle duration.
+ * @param {string} monitorType Monitor type
+ * @param {number} durationSeconds Duration in seconds
+ * @returns {void}
+ */
+function recordCheckDuration(monitorType, durationSeconds) {
+    if (!initialized || !otel.isEnabled() || !histograms.checkDuration) {
+        return;
+    }
+    if (typeof durationSeconds !== "number" || isNaN(durationSeconds)) {
+        return;
+    }
+    histograms.checkDuration.record(durationSeconds, buildFleetLabels({
+        monitor_type: String(monitorType || "unknown"),
+    }));
+}
+
+/**
+ * Increment the iris_check_error_total counter.
+ * @param {string} monitorType Monitor type
+ * @param {string} errorCategory One of the ERROR_CATEGORIES enum values
+ * @returns {void}
+ */
+function incrementCheckError(monitorType, errorCategory) {
+    if (!initialized || !otel.isEnabled() || !counters.checkErrorTotal) {
+        return;
+    }
+    counters.checkErrorTotal.add(1, buildFleetLabels({
+        monitor_type: String(monitorType || "unknown"),
+        error_category: String(errorCategory),
+    }));
+}
+
+/**
+ * Record scheduler drift (how late a check fired vs expected).
+ * @param {string} monitorType Monitor type
+ * @param {number} driftSeconds Drift in seconds (positive = late)
+ * @returns {void}
+ */
+function recordSchedulerDrift(monitorType, driftSeconds) {
+    if (!initialized || !otel.isEnabled() || !histograms.schedulerDrift) {
+        return;
+    }
+    if (typeof driftSeconds !== "number" || isNaN(driftSeconds)) {
+        return;
+    }
+    histograms.schedulerDrift.record(driftSeconds, buildFleetLabels({
+        monitor_type: String(monitorType || "unknown"),
+    }));
+}
+
+/**
+ * Increment the iris_notification_send_total counter.
+ * @param {string} providerType Notification provider name (e.g., "slack", "smtp")
+ * @param {string} result "success" or "failure"
+ * @returns {void}
+ */
+function incrementNotificationSend(providerType, result) {
+    if (!initialized || !otel.isEnabled() || !counters.notificationSendTotal) {
+        return;
+    }
+    counters.notificationSendTotal.add(1, buildFleetLabels({
+        provider_type: String(providerType || "unknown"),
+        result: String(result),
+    }));
+}
+
+/**
+ * Update the active monitor counts for the observable gauge.
+ * @param {Map<string, number>} typeCounts Map of monitor_type -> count
+ * @returns {void}
+ */
+function updateActiveMonitors(typeCounts) {
+    if (!initialized || !otel.isEnabled()) {
+        return;
+    }
+    activeMonitorCounts.clear();
+    for (const [monitorType, count] of typeCounts) {
+        const labels = buildFleetLabels({
+            monitor_type: String(monitorType),
+        });
+        activeMonitorCounts.set(`active:${monitorType}`, {
+            value: count,
+            labels,
+        });
+    }
+}
+
+/**
+ * Classify an error into a low-cardinality category.
+ * Uses priority-ordered pattern matching; "unknown" is the fallback.
+ * @param {Error} error The caught error object
+ * @param {string} monitorType The monitor type (for database detection)
+ * @param {string} message The bean.msg (may differ from error.message)
+ * @returns {string} One of the ERROR_CATEGORIES enum values
+ */
+function classifyError(error, monitorType, message) {
+    const msg = message || error?.message || "";
+
+    // Timeout: AbortSignal cancellation or message containing "timeout"
+    if (error?.name === "CanceledError" || /timeout/i.test(msg)) {
+        return "timeout";
+    }
+
+    // Connection refused
+    if (error?.code === "ECONNREFUSED" || error?.cause?.code === "ECONNREFUSED") {
+        return "connection_refused";
+    }
+
+    // DNS resolution failure
+    if (error?.code === "ENOTFOUND" || error?.code === "EAI_AGAIN" ||
+        error?.cause?.code === "ENOTFOUND" || error?.cause?.code === "EAI_AGAIN" ||
+        /NXDOMAIN|SERVFAIL|NODATA/i.test(msg)) {
+        return "dns_resolution";
+    }
+
+    // TLS / certificate errors
+    if ((error?.code && /^ERR_TLS/i.test(error.code)) ||
+        error?.code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE" ||
+        /certificate|ssl error/i.test(msg)) {
+        return "tls_certificate";
+    }
+
+    // HTTP client errors (4xx)
+    if (error?.response?.status >= 400 && error?.response?.status < 500) {
+        return "http_client_error";
+    }
+
+    // HTTP server errors (5xx)
+    if (error?.response?.status >= 500) {
+        return "http_server_error";
+    }
+
+    // Authentication errors
+    if (/oauth|unauthorized|forbidden|authentication failed|password|credential/i.test(msg)) {
+        return "authentication";
+    }
+
+    // Content mismatch (keyword, JSON query, MQTT message)
+    if (/keyword|JSON query|Message Mismatch|expected value|does not pass/i.test(msg)) {
+        return "content_mismatch";
+    }
+
+    // Database errors (monitor type hint)
+    if (DB_MONITOR_TYPES.has(monitorType)) {
+        return "database_error";
+    }
+
+    return "unknown";
+}
+
 /**
  * Check if metrics module is initialized
  * @returns {boolean} True if initialized
@@ -397,8 +648,18 @@ module.exports = {
     removeMonitor,
     isInitialized,
     getMetricValues,
+    // Usage & Performance metrics
+    incrementCheckTotal,
+    recordCheckDuration,
+    incrementCheckError,
+    recordSchedulerDrift,
+    incrementNotificationSend,
+    updateActiveMonitors,
+    classifyError,
     // For advanced usage
     sanitizeLabels,
     buildBaseLabels,
     ALLOWED_LABELS,
+    // Constants (for testing)
+    ERROR_CATEGORIES,
 };
