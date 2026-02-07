@@ -251,3 +251,26 @@ func (s *MappingStore) SaveAll() error {
 
 	return nil
 }
+
+// SaveMapping persists the mapping for a single probe to disk.
+func (s *MappingStore) SaveMapping(probeName string) error {
+	if s.dataDir == "" {
+		return nil
+	}
+
+	s.mu.RLock()
+	mapping, exists := s.mappings[probeName]
+	s.mu.RUnlock()
+
+	if !exists {
+		return nil
+	}
+
+	// Ensure data directory exists
+	if err := os.MkdirAll(s.dataDir, 0755); err != nil {
+		return err
+	}
+
+	path := s.dataDir + "/" + probeName + ".json"
+	return mapping.SaveToFile(path)
+}

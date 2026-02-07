@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"iris-sync/internal/client"
 	"iris-sync/internal/db"
@@ -78,6 +79,14 @@ func (r *Reconciler) ComputeSyncPlan(
 	// Track which master IDs exist on the probe (for orphan detection)
 	knownMasterIDs := make(map[int64]bool)
 
+	// Build name-based index of probe monitors for duplicate detection.
+	// If mapping files are lost or corrupted, this prevents creating duplicate
+	// monitors on the probe by matching existing monitors by name.
+	probeByName := make(map[string]*db.Monitor, len(probeMonitors))
+	for _, pm := range probeMonitors {
+		probeByName[pm.Name] = pm
+	}
+
 	// Phase 1: Check each master monitor for create/update needs
 	for masterID, masterMon := range masterMonitors {
 		// Compute content hash for change detection
@@ -87,7 +96,33 @@ func (r *Reconciler) ComputeSyncPlan(
 		probeID, existsOnProbe := mapping.GetProbeID(masterID)
 
 		if !existsOnProbe {
-			// Monitor doesn't exist on probe - CREATE
+			// No mapping entry for this master monitor. Before creating, check if
+			// the probe already has a monitor with the same name (orphan from a
+			// previous sync where mappings were lost).
+			if existingProbe, found := probeByName[masterMon.Name]; found {
+				r.logger.Info("adopted orphaned probe monitor by name match",
+					"master_id", masterID,
+					"probe_id", existingProbe.ID,
+					"name", masterMon.Name,
+				)
+				// Adopt: add to mapping and schedule an update instead of create
+				mapping.SetMapping(masterID, existingProbe.ID)
+				mapping.SetHash(masterID, "") // Force update on first sync
+
+				updateMon := *masterMon
+				updateMon.ID = existingProbe.ID
+				plans = append(plans, SyncPlan{
+					Action:   ActionUpdate,
+					MasterID: masterID,
+					ProbeID:  existingProbe.ID,
+					Monitor:  &updateMon,
+					Reason:   "adopted orphan, syncing config",
+				})
+				knownMasterIDs[masterID] = true
+				continue
+			}
+
+			// Monitor truly doesn't exist on probe - CREATE
 			plans = append(plans, SyncPlan{
 				Action:   ActionCreate,
 				MasterID: masterID,
@@ -210,7 +245,9 @@ func (r *Reconciler) ExecuteSyncPlan(
 			}
 		}
 
-		err := r.executeCreate(ctx, kumaClient, plan, mapping, dryRun)
+		opCtx, opCancel := context.WithTimeout(ctx, 60*time.Second)
+		err := r.executeCreate(opCtx, kumaClient, plan, mapping, dryRun)
+		opCancel()
 		if err != nil {
 			stats.Errors++
 			r.logger.Error("failed to create monitor",
@@ -220,6 +257,12 @@ func (r *Reconciler) ExecuteSyncPlan(
 			)
 		} else {
 			stats.Creates++
+			// Throttle creates: give the probe time to start the monitor and fire
+			// the first beat before sending the next create. Without this, bulk
+			// creates cause a thundering herd that saturates the probe's event loop.
+			if !dryRun {
+				time.Sleep(1 * time.Second)
+			}
 		}
 	}
 
@@ -241,7 +284,9 @@ func (r *Reconciler) ExecuteSyncPlan(
 			}
 		}
 
-		err := r.executeUpdate(ctx, kumaClient, plan, mapping, dryRun)
+		opCtx, opCancel := context.WithTimeout(ctx, 60*time.Second)
+		err := r.executeUpdate(opCtx, kumaClient, plan, mapping, dryRun)
+		opCancel()
 		if err != nil {
 			stats.Errors++
 			r.logger.Error("failed to update monitor",
@@ -264,7 +309,9 @@ func (r *Reconciler) ExecuteSyncPlan(
 		default:
 		}
 
-		err := r.executeDelete(ctx, kumaClient, plan, mapping, dryRun)
+		opCtx, opCancel := context.WithTimeout(ctx, 60*time.Second)
+		err := r.executeDelete(opCtx, kumaClient, plan, mapping, dryRun)
+		opCancel()
 		if err != nil {
 			stats.Errors++
 			r.logger.Error("failed to delete monitor",

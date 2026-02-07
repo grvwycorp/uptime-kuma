@@ -130,11 +130,6 @@ func main() {
 		case <-ticker.C:
 			runSyncCycle(ctx, cfg, masterDB, reconciler, mappingStore, logger)
 
-			// Persist mappings after each cycle
-			if err := mappingStore.SaveAll(); err != nil {
-				logger.Error("failed to save mappings", "error", err)
-			}
-
 		case sig := <-sigCh:
 			logger.Info("received shutdown signal", "signal", sig)
 			cancel()
@@ -183,6 +178,8 @@ func runSyncCycle(
 
 	// Sync to each probe concurrently
 	var wg sync.WaitGroup
+	var successMu sync.Mutex
+	var successProbes []string
 	semaphore := make(chan struct{}, cfg.Sync.Concurrency)
 
 	for _, probeCfg := range probes {
@@ -214,10 +211,22 @@ func runSyncCycle(
 				"deletes", stats.Deletes,
 				"errors", stats.Errors,
 			)
+
+			// Track successful sync for selective mapping persistence
+			successMu.Lock()
+			successProbes = append(successProbes, probeCfg.Name)
+			successMu.Unlock()
 		}(probeCfg)
 	}
 
 	wg.Wait()
+
+	// Only save mappings for probes that synced successfully
+	for _, probeName := range successProbes {
+		if err := mappingStore.SaveMapping(probeName); err != nil {
+			logger.Error("failed to save mapping", "probe", probeName, "error", err)
+		}
+	}
 
 	elapsed := time.Since(startTime)
 	logger.Info("sync cycle complete", "duration", elapsed.Round(time.Millisecond))
@@ -254,8 +263,20 @@ func syncToProbe(
 
 	logger.Debug("authenticated with probe")
 
+	// Create sync-level timeout: ensures the entire sync finishes before next cycle.
+	// Cap at 4 minutes or interval-30s, whichever is smaller.
+	syncTimeout := syncCfg.Interval - 30*time.Second
+	if syncTimeout > 4*time.Minute {
+		syncTimeout = 4 * time.Minute
+	}
+	if syncTimeout < 1*time.Minute {
+		syncTimeout = 1 * time.Minute
+	}
+	syncCtx, syncCancel := context.WithTimeout(ctx, syncTimeout)
+	defer syncCancel()
+
 	// Get current monitors from probe
-	probeMonitors, err := kumaClient.GetMonitorList(ctx)
+	probeMonitors, err := kumaClient.GetMonitorList(syncCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get monitor list: %w", err)
 	}
@@ -272,7 +293,7 @@ func syncToProbe(
 	}
 
 	// Execute sync plan
-	return reconciler.ExecuteSyncPlan(ctx, kumaClient, plans, mapping, syncCfg.DryRun)
+	return reconciler.ExecuteSyncPlan(syncCtx, kumaClient, plans, mapping, syncCfg.DryRun)
 }
 
 // filterMonitorsForProbe filters monitors based on probe-specific tags/types configuration.
