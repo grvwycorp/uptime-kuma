@@ -374,10 +374,13 @@ func (c *KumaClient) Emit(ctx context.Context, event string, args ...interface{}
 }
 
 // Login authenticates with the Uptime Kuma instance.
+// Uses lightweight mode to skip the heavy afterLogin data dump (heartbeats,
+// stats, notifications, etc.) that can take minutes with many monitors.
 func (c *KumaClient) Login(ctx context.Context) error {
 	loginData := map[string]interface{}{
-		"username": c.username,
-		"password": c.password,
+		"username":    c.username,
+		"password":    c.password,
+		"lightweight": true,
 	}
 
 	response, err := c.Emit(ctx, "login", loginData)

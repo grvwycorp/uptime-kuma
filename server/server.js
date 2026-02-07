@@ -465,7 +465,16 @@ let needSetup = false;
 
             if (user) {
                 if (user.twofa_status === 0) {
-                    await afterLogin(socket, user);
+                    if (data.lightweight) {
+                        // Lightweight login for sync clients: authenticate and join
+                        // room but skip the heavy afterLogin data dump (heartbeats,
+                        // stats, etc.) which can take minutes with many monitors.
+                        socket.userID = user.id;
+                        socket.join(user.id);
+                        log.info("auth", `Lightweight login for user ${data.username}. IP=${clientIP}`);
+                    } else {
+                        await afterLogin(socket, user);
+                    }
 
                     log.info("auth", `Successfully logged in user ${data.username}. IP=${clientIP}`);
 
