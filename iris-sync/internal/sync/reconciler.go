@@ -153,8 +153,8 @@ func (r *Reconciler) ComputeSyncPlan(
 }
 
 // ExecuteSyncPlan executes the sync operations against a probe with topological ordering.
-// Two-pass sync ensures groups are created before their children, and parent IDs are
-// remapped from master to probe-local IDs.
+// Creates are sorted topologically so parents are created before children at any nesting
+// depth, with parent IDs remapped from master to probe-local IDs.
 // Returns statistics about the sync operation.
 func (r *Reconciler) ExecuteSyncPlan(
 	ctx context.Context,
@@ -165,17 +165,13 @@ func (r *Reconciler) ExecuteSyncPlan(
 ) (*SyncStats, error) {
 	stats := &SyncStats{}
 
-	// Separate plans by action type and monitor type for topological ordering
-	var groupCreates, childCreates, updates, deletes []SyncPlan
+	// Separate plans by action type
+	var creates, updates, deletes []SyncPlan
 
 	for _, plan := range plans {
 		switch plan.Action {
 		case ActionCreate:
-			if plan.Monitor.Type == "group" {
-				groupCreates = append(groupCreates, plan)
-			} else {
-				childCreates = append(childCreates, plan)
-			}
+			creates = append(creates, plan)
 		case ActionUpdate:
 			updates = append(updates, plan)
 		case ActionDelete:
@@ -183,29 +179,12 @@ func (r *Reconciler) ExecuteSyncPlan(
 		}
 	}
 
-	// PASS 1: Create groups first (no parent dependencies)
-	for _, plan := range groupCreates {
-		select {
-		case <-ctx.Done():
-			return stats, ctx.Err()
-		default:
-		}
+	// Topological sort of creates: parents before children at any depth.
+	// Build index of master IDs being created in this batch.
+	sortedCreates := r.topologicalSortCreates(creates)
 
-		err := r.executeCreate(ctx, kumaClient, plan, mapping, dryRun)
-		if err != nil {
-			stats.Errors++
-			r.logger.Error("failed to create group",
-				"master_id", plan.MasterID,
-				"name", plan.Monitor.Name,
-				"error", err,
-			)
-		} else {
-			stats.Creates++
-		}
-	}
-
-	// PASS 2: Create children with remapped parent IDs
-	for _, plan := range childCreates {
+	// Create monitors in dependency order with parent ID remapping
+	for _, plan := range sortedCreates {
 		select {
 		case <-ctx.Done():
 			return stats, ctx.Err()
@@ -244,7 +223,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 		}
 	}
 
-	// PASS 3: Updates (also need parent ID remapping)
+	// Updates (also need parent ID remapping)
 	for _, plan := range updates {
 		select {
 		case <-ctx.Done():
@@ -276,7 +255,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 		}
 	}
 
-	// PASS 4: Deletes (process in reverse to delete children before parents)
+	// Deletes (process in reverse to delete children before parents)
 	for i := len(deletes) - 1; i >= 0; i-- {
 		plan := deletes[i]
 		select {
@@ -299,6 +278,65 @@ func (r *Reconciler) ExecuteSyncPlan(
 	}
 
 	return stats, nil
+}
+
+// topologicalSortCreates orders create plans so that parents come before children.
+// Monitors with no parent (or whose parent already exists) come first, then their
+// children, then grandchildren, etc. This handles nested groups at any depth.
+func (r *Reconciler) topologicalSortCreates(creates []SyncPlan) []SyncPlan {
+	if len(creates) == 0 {
+		return creates
+	}
+
+	// Index plans by their master ID for lookup
+	planByMasterID := make(map[int64]*SyncPlan, len(creates))
+	for i := range creates {
+		planByMasterID[creates[i].MasterID] = &creates[i]
+	}
+
+	// Kahn's algorithm: process nodes whose dependencies are satisfied
+	var sorted []SyncPlan
+	added := make(map[int64]bool, len(creates))
+
+	for len(sorted) < len(creates) {
+		progress := false
+
+		for _, plan := range creates {
+			if added[plan.MasterID] {
+				continue
+			}
+
+			// Ready if: no parent, or parent is not in this batch (already exists), or parent already added
+			if !plan.Monitor.Parent.Valid {
+				// No parent - root monitor
+				sorted = append(sorted, plan)
+				added[plan.MasterID] = true
+				progress = true
+			} else {
+				parentMasterID := plan.Monitor.Parent.Int64
+				_, parentInBatch := planByMasterID[parentMasterID]
+				if !parentInBatch || added[parentMasterID] {
+					// Parent already exists or was already sorted
+					sorted = append(sorted, plan)
+					added[plan.MasterID] = true
+					progress = true
+				}
+			}
+		}
+
+		if !progress {
+			// Circular dependency or unresolvable - add remaining to avoid infinite loop
+			r.logger.Warn("could not resolve all parent dependencies, adding remaining monitors")
+			for _, plan := range creates {
+				if !added[plan.MasterID] {
+					sorted = append(sorted, plan)
+				}
+			}
+			break
+		}
+	}
+
+	return sorted
 }
 
 // executeCreate adds a new monitor to the probe.

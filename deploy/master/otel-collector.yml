@@ -50,9 +50,9 @@ service:
 
   telemetry:
     logs:
-      level: debug
+      level: warn
     metrics:
-      level: detailed
+      level: normal
       readers:
         - pull:
             exporter:
