@@ -75,6 +75,20 @@
                                     {{ $t("Resume") }}
                                 </a>
                             </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="#" @click.prevent="showBulkTagDialog('add')">
+                                    <font-awesome-icon icon="tag" class="me-2" />
+                                    {{ $t("Add Tag") }}
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" @click.prevent="showBulkTagDialog('remove')">
+                                    <font-awesome-icon icon="tag" class="me-2" />
+                                    {{ $t("Remove Tag") }}
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
                             <li>
                                 <a
                                     class="dropdown-item text-danger"
@@ -126,10 +140,17 @@
     <Confirm ref="confirmDelete" btn-style="btn-danger" :yes-text="$t('Yes')" :no-text="$t('No')" @yes="deleteSelected">
         {{ $t("deleteMonitorsMsg") }}
     </Confirm>
+
+    <BulkTagDialog
+        ref="bulkTagDialog"
+        :selectedMonitors="selectedMonitors"
+        @apply="applyBulkTag"
+    />
 </template>
 
 <script>
 import Confirm from "../components/Confirm.vue";
+import BulkTagDialog from "../components/BulkTagDialog.vue";
 import MonitorListItem from "../components/MonitorListItem.vue";
 import MonitorListFilter from "./MonitorListFilter.vue";
 import { getMonitorRelativeURL } from "../util.ts";
@@ -137,6 +158,7 @@ import { getMonitorRelativeURL } from "../util.ts";
 export default {
     components: {
         Confirm,
+        BulkTagDialog,
         MonitorListItem,
         MonitorListFilter,
     },
@@ -510,6 +532,91 @@ export default {
             }
             if (errorCount > 0) {
                 this.$root.toastError(this.$t("bulkDeleteErrorMsg", errorCount));
+            }
+
+            this.cancelSelectMode();
+        },
+        /**
+         * Show bulk tag dialog
+         * @param {string} mode "add" or "remove"
+         * @returns {void}
+         */
+        showBulkTagDialog(mode) {
+            this.$refs.bulkTagDialog.show(mode);
+        },
+        /**
+         * Apply a tag to or remove a tag from all selected monitors
+         * @param {object} param0 Tag operation details
+         * @param {number} param0.tagID ID of the tag
+         * @param {string} param0.tagName Name of the tag
+         * @param {string} param0.value Tag value
+         * @param {string} param0.mode "add" or "remove"
+         * @returns {Promise<void>}
+         */
+        async applyBulkTag({ tagID, tagName, value, mode }) {
+            if (this.bulkActionInProgress) {
+                return;
+            }
+
+            this.bulkActionInProgress = true;
+            const monitorIds = Object.keys(this.selectedMonitors);
+            let successCount = 0;
+
+            for (const id of monitorIds) {
+                const monitor = this.$root.monitorList[id];
+
+                if (mode === "add") {
+                    // Skip if monitor already has this tag with same value
+                    const alreadyHas = monitor.tags?.some(
+                        (t) => t.tag_id === tagID && t.value === value
+                    );
+                    if (alreadyHas) {
+                        continue;
+                    }
+
+                    try {
+                        await new Promise((resolve, reject) => {
+                            this.$root.getSocket().emit("addMonitorTag", tagID, parseInt(id), value, (res) => {
+                                if (res.ok) {
+                                    successCount++;
+                                    resolve();
+                                } else {
+                                    reject();
+                                }
+                            });
+                        });
+                    } catch (error) {
+                        // Error already counted
+                    }
+                } else {
+                    // Remove: find matching tag on this monitor
+                    const matchingTag = monitor.tags?.find((t) => t.tag_id === tagID);
+                    if (!matchingTag) {
+                        continue;
+                    }
+
+                    try {
+                        await new Promise((resolve, reject) => {
+                            this.$root.getSocket().emit("deleteMonitorTag", tagID, parseInt(id), matchingTag.value, (res) => {
+                                if (res.ok) {
+                                    successCount++;
+                                    resolve();
+                                } else {
+                                    reject();
+                                }
+                            });
+                        });
+                    } catch (error) {
+                        // Error already counted
+                    }
+                }
+            }
+
+            this.bulkActionInProgress = false;
+
+            if (successCount > 0) {
+                const msgKey = mode === "add" ? "bulkAddTagMsg" : "bulkRemoveTagMsg";
+                this.$root.toastSuccess(this.$t(msgKey, successCount, { name: tagName }));
             }
 
             this.cancelSelectMode();
