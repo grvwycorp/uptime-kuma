@@ -48,6 +48,7 @@ type KumaClient struct {
 	ackCounter atomic.Int64
 	ackMap     sync.Map // map[int64]chan []interface{}
 	mu         sync.Mutex
+	pingCh     chan struct{} // signals respondToPings when server sends PING
 
 	// Event handlers
 	handlers   map[string]func([]interface{})
@@ -144,11 +145,14 @@ func (c *KumaClient) Connect(ctx context.Context) error {
 
 	c.connected.Store(true)
 
+	// Channel for EIO v4 server-initiated ping/pong
+	c.pingCh = make(chan struct{}, 1)
+
 	// Start message reader goroutine
 	go c.readLoop()
 
-	// Start ping goroutine
-	go c.pingLoop(time.Duration(handshake.PingInterval) * time.Millisecond)
+	// Start pong responder (EIO v4: server sends PING, client responds with PONG)
+	go c.respondToPings(c.pingCh)
 
 	// Send Socket.IO CONNECT packet to join default namespace
 	// Format: 40 (Engine.IO MESSAGE + Socket.IO CONNECT)
@@ -178,19 +182,17 @@ func (c *KumaClient) readLoop() {
 	}
 }
 
-// pingLoop sends periodic ping messages.
-func (c *KumaClient) pingLoop(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for c.connected.Load() {
-		<-ticker.C
+// respondToPings sends PONG responses when the server sends PING.
+// In Engine.IO v4, the SERVER sends pings and the CLIENT responds with pongs.
+// This goroutine is signaled by readLoop via the pingCh channel.
+func (c *KumaClient) respondToPings(pingCh <-chan struct{}) {
+	for range pingCh {
 		if !c.connected.Load() {
 			return
 		}
 
 		c.mu.Lock()
-		err := c.conn.WriteMessage(websocket.TextMessage, []byte("2"))
+		err := c.conn.WriteMessage(websocket.TextMessage, []byte("3"))
 		c.mu.Unlock()
 
 		if err != nil {
@@ -207,8 +209,16 @@ func (c *KumaClient) handleMessage(msg []byte) {
 	}
 
 	switch msg[0] {
+	case enginePing:
+		// Server ping (EIO v4): signal respondToPings goroutine
+		if c.pingCh != nil {
+			select {
+			case c.pingCh <- struct{}{}:
+			default:
+			}
+		}
 	case enginePong:
-		// Pong received, connection alive
+		// Pong received (legacy, keep for safety)
 	case engineMessage:
 		// Socket.IO message
 		if len(msg) > 1 {
@@ -533,6 +543,10 @@ func (c *KumaClient) DeleteMonitor(ctx context.Context, monitorID int64, deleteC
 // Disconnect closes the Socket.IO connection.
 func (c *KumaClient) Disconnect() {
 	c.connected.Store(false)
+	if c.pingCh != nil {
+		close(c.pingCh)
+		c.pingCh = nil
+	}
 	if c.conn != nil {
 		c.conn.Close()
 	}
