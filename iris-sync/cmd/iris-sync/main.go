@@ -98,7 +98,7 @@ func main() {
 	mappingStore := isync.NewMappingStore("./data/mappings")
 
 	// Create reconciler
-	reconciler := isync.NewReconciler(logger, cfg.Sync.DeleteOrphans)
+	reconciler := isync.NewReconciler(logger, cfg.Sync.DeleteOrphans, cfg.Sync.OperationTimeout)
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

@@ -55,15 +55,20 @@ type SyncStats struct {
 
 // Reconciler handles delta synchronization between master and probes.
 type Reconciler struct {
-	logger        *slog.Logger
-	deleteOrphans bool
+	logger           *slog.Logger
+	deleteOrphans    bool
+	operationTimeout time.Duration
 }
 
 // NewReconciler creates a new reconciler instance.
-func NewReconciler(logger *slog.Logger, deleteOrphans bool) *Reconciler {
+func NewReconciler(logger *slog.Logger, deleteOrphans bool, operationTimeout time.Duration) *Reconciler {
+	if operationTimeout <= 0 {
+		operationTimeout = 60 * time.Second
+	}
 	return &Reconciler{
-		logger:        logger,
-		deleteOrphans: deleteOrphans,
+		logger:           logger,
+		deleteOrphans:    deleteOrphans,
+		operationTimeout: operationTimeout,
 	}
 }
 
@@ -215,8 +220,16 @@ func (r *Reconciler) ExecuteSyncPlan(
 	}
 
 	// Topological sort of creates: parents before children at any depth.
-	// Build index of master IDs being created in this batch.
 	sortedCreates := r.topologicalSortCreates(creates)
+
+	// Build index of master IDs being created in this batch for dependency tracking.
+	createBatch := make(map[int64]bool, len(sortedCreates))
+	for _, plan := range sortedCreates {
+		createBatch[plan.MasterID] = true
+	}
+
+	// Track failed creates so we can skip dependent children.
+	failedCreates := make(map[int64]bool)
 
 	// Create monitors in dependency order with parent ID remapping
 	for _, plan := range sortedCreates {
@@ -226,12 +239,29 @@ func (r *Reconciler) ExecuteSyncPlan(
 		default:
 		}
 
+		// Skip children whose parent creation failed in this cycle.
+		// They'll be retried next cycle when their parent may succeed.
+		if plan.Monitor.Parent.Valid {
+			masterParentID := plan.Monitor.Parent.Int64
+			if createBatch[masterParentID] && failedCreates[masterParentID] {
+				r.logger.Warn("skipping monitor creation - parent failed in this cycle",
+					"monitor", plan.Monitor.Name,
+					"master_id", plan.MasterID,
+					"failed_parent_id", masterParentID,
+				)
+				stats.Skipped++
+				failedCreates[plan.MasterID] = true // Cascade: grandchildren also skip
+				continue
+			}
+		}
+
 		// Remap parent ID from master to probe-local ID
+		parentCleared := false
 		if plan.Monitor.Parent.Valid {
 			masterParentID := plan.Monitor.Parent.Int64
 			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
 				plan.Monitor.Parent = sql.NullInt64{Int64: probeParentID, Valid: true}
-				r.logger.Debug("remapped parent ID",
+				r.logger.Info("remapped parent ID",
 					"monitor", plan.Monitor.Name,
 					"master_parent_id", masterParentID,
 					"probe_parent_id", probeParentID,
@@ -242,14 +272,22 @@ func (r *Reconciler) ExecuteSyncPlan(
 					"master_parent_id", masterParentID,
 				)
 				plan.Monitor.Parent = sql.NullInt64{Valid: false}
+				parentCleared = true
 			}
 		}
 
-		opCtx, opCancel := context.WithTimeout(ctx, 60*time.Second)
+		// If parent was cleared (not found on probe), store empty hash so next
+		// sync cycle detects a change and re-syncs with the correct parent.
+		if parentCleared {
+			plan.Monitor.ContentHash = ""
+		}
+
+		opCtx, opCancel := context.WithTimeout(ctx, r.operationTimeout)
 		err := r.executeCreate(opCtx, kumaClient, plan, mapping, dryRun)
 		opCancel()
 		if err != nil {
 			stats.Errors++
+			failedCreates[plan.MasterID] = true
 			r.logger.Error("failed to create monitor",
 				"master_id", plan.MasterID,
 				"name", plan.Monitor.Name,
@@ -279,12 +317,23 @@ func (r *Reconciler) ExecuteSyncPlan(
 			masterParentID := plan.Monitor.Parent.Int64
 			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
 				plan.Monitor.Parent = sql.NullInt64{Int64: probeParentID, Valid: true}
+				r.logger.Debug("remapped parent ID for update",
+					"monitor", plan.Monitor.Name,
+					"master_parent_id", masterParentID,
+					"probe_parent_id", probeParentID,
+				)
 			} else {
+				r.logger.Warn("parent not found on probe during update, clearing parent reference",
+					"monitor", plan.Monitor.Name,
+					"master_parent_id", masterParentID,
+				)
 				plan.Monitor.Parent = sql.NullInt64{Valid: false}
+				// Force re-sync next cycle to fix parent when it becomes available
+				plan.Monitor.ContentHash = ""
 			}
 		}
 
-		opCtx, opCancel := context.WithTimeout(ctx, 60*time.Second)
+		opCtx, opCancel := context.WithTimeout(ctx, r.operationTimeout)
 		err := r.executeUpdate(opCtx, kumaClient, plan, mapping, dryRun)
 		opCancel()
 		if err != nil {
@@ -309,7 +358,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 		default:
 		}
 
-		opCtx, opCancel := context.WithTimeout(ctx, 60*time.Second)
+		opCtx, opCancel := context.WithTimeout(ctx, r.operationTimeout)
 		err := r.executeDelete(opCtx, kumaClient, plan, mapping, dryRun)
 		opCancel()
 		if err != nil {
@@ -540,6 +589,8 @@ func getMonitorName(m *db.Monitor) string {
 }
 
 // FilterMonitorsByTypes returns monitors that match any of the specified types.
+// Always includes "group" type monitors that are ancestors of any matched monitor,
+// so that nested hierarchies are preserved on the probe.
 func FilterMonitorsByTypes(monitors map[int64]*db.Monitor, types []string) map[int64]*db.Monitor {
 	if len(types) == 0 {
 		return monitors
@@ -550,10 +601,37 @@ func FilterMonitorsByTypes(monitors map[int64]*db.Monitor, types []string) map[i
 		typeSet[t] = true
 	}
 
+	// First pass: collect directly matched monitors
 	filtered := make(map[int64]*db.Monitor)
 	for id, m := range monitors {
 		if typeSet[m.Type] {
 			filtered[id] = m
+		}
+	}
+
+	// Second pass: include ancestor groups so hierarchies are preserved.
+	// Walk up the parent chain for each matched monitor and include any
+	// "group" type ancestors that aren't already in the filtered set.
+	for _, m := range filtered {
+		parentID := m.Parent
+		visited := make(map[int64]bool)
+		for parentID.Valid {
+			pid := parentID.Int64
+			if visited[pid] {
+				break // cycle guard
+			}
+			visited[pid] = true
+			if _, already := filtered[pid]; already {
+				break // already included, ancestors above it are too
+			}
+			if parent, exists := monitors[pid]; exists {
+				if parent.Type == "group" {
+					filtered[pid] = parent
+				}
+				parentID = parent.Parent
+			} else {
+				break
+			}
 		}
 	}
 
