@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -69,6 +70,7 @@ func NewKumaClient(endpoint, username, password string) *KumaClient {
 func (c *KumaClient) Connect(ctx context.Context) error {
 	// Step 1: Engine.IO handshake via HTTP polling to get session ID
 	handshakeURL := fmt.Sprintf("%s/socket.io/?EIO=4&transport=polling", c.endpoint)
+	slog.Info("connecting to probe", "endpoint", c.endpoint)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", handshakeURL, nil)
 	if err != nil {
@@ -103,6 +105,11 @@ func (c *KumaClient) Connect(ctx context.Context) error {
 	}
 
 	c.sid = handshake.SID
+	slog.Info("EIO handshake complete",
+		"sid", handshake.SID,
+		"ping_interval", handshake.PingInterval,
+		"ping_timeout", handshake.PingTimeout,
+	)
 
 	// Step 2: Upgrade to WebSocket
 	wsURL := strings.Replace(c.endpoint, "http", "ws", 1)
@@ -144,6 +151,7 @@ func (c *KumaClient) Connect(ctx context.Context) error {
 	}
 
 	c.connected.Store(true)
+	slog.Info("WebSocket upgrade complete", "endpoint", c.endpoint)
 
 	// Channel for EIO v4 server-initiated ping/pong
 	c.pingCh = make(chan struct{}, 1)
@@ -387,6 +395,7 @@ func (c *KumaClient) Emit(ctx context.Context, event string, args ...interface{}
 // Uses lightweight mode to skip the heavy afterLogin data dump (heartbeats,
 // stats, notifications, etc.) that can take minutes with many monitors.
 func (c *KumaClient) Login(ctx context.Context) error {
+	slog.Info("logging in to probe", "endpoint", c.endpoint, "username", c.username)
 	loginData := map[string]interface{}{
 		"username":    c.username,
 		"password":    c.password,
@@ -416,6 +425,7 @@ func (c *KumaClient) Login(ctx context.Context) error {
 		c.token = token
 	}
 
+	slog.Info("login successful", "endpoint", c.endpoint)
 	return nil
 }
 
@@ -542,6 +552,7 @@ func (c *KumaClient) DeleteMonitor(ctx context.Context, monitorID int64, deleteC
 
 // Disconnect closes the Socket.IO connection.
 func (c *KumaClient) Disconnect() {
+	slog.Info("disconnecting from probe", "endpoint", c.endpoint)
 	c.connected.Store(false)
 	if c.pingCh != nil {
 		close(c.pingCh)

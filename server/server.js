@@ -410,9 +410,9 @@ let needSetup = false;
                         throw new Error("The token is invalid due to password change or old token");
                     }
 
-                    log.debug("auth", "afterLogin");
+                    log.info("auth", "afterLogin starting");
                     await afterLogin(socket, user);
-                    log.debug("auth", "afterLogin ok");
+                    log.info("auth", "afterLogin completed");
 
                     log.info("auth", `Successfully logged in user ${decoded.username}. IP=${clientIP}`);
 
@@ -473,7 +473,14 @@ let needSetup = false;
                         socket.join(user.id);
                         log.info("auth", `Lightweight login for user ${data.username}. IP=${clientIP}`);
                     } else {
-                        await afterLogin(socket, user);
+                        try {
+                            await afterLogin(socket, user);
+                        } catch (e) {
+                            log.error("auth", `afterLogin failed for user ${data.username}: ${e.message}`);
+                            log.error("auth", e.stack);
+                            callback({ ok: false, msg: "Server error during login. Please try again." });
+                            return;
+                        }
                     }
 
                     log.info("auth", `Successfully logged in user ${data.username}. IP=${clientIP}`);
@@ -496,7 +503,14 @@ let needSetup = false;
                     let verify = notp.totp.verify(data.token, user.twofa_secret, twoFAVerifyOptions);
 
                     if (user.twofa_last_token !== data.token && verify) {
-                        await afterLogin(socket, user);
+                        try {
+                            await afterLogin(socket, user);
+                        } catch (e) {
+                            log.error("auth", `afterLogin failed for user ${data.username}: ${e.message}`);
+                            log.error("auth", e.stack);
+                            callback({ ok: false, msg: "Server error during login. Please try again." });
+                            return;
+                        }
 
                         await R.exec("UPDATE `user` SET twofa_last_token = ? WHERE id = ? ", [
                             data.token,
@@ -1750,7 +1764,12 @@ let needSetup = false;
         log.debug("auth", "check auto login");
         if (await setting("disableAuth")) {
             log.info("auth", "Disabled Auth: auto login to admin");
-            await afterLogin(socket, await R.findOne("user"));
+            try {
+                await afterLogin(socket, await R.findOne("user"));
+            } catch (e) {
+                log.error("auth", `afterLogin failed during auto-login: ${e.message}`);
+                log.error("auth", e.stack);
+            }
             socket.emit("autoLogin");
         } else {
             socket.emit("loginRequired");
@@ -1854,10 +1873,14 @@ async function checkOwner(userID, monitorID) {
  * @returns {Promise<void>}
  */
 async function afterLogin(socket, user) {
+    const loginStart = Date.now();
     socket.userID = user.id;
     socket.join(user.id);
 
     let monitorList = await server.sendMonitorList(socket);
+    const monitorCount = Object.keys(monitorList).length;
+    log.info("auth", `afterLogin: sent ${monitorCount} monitors in ${Date.now() - loginStart}ms`);
+
     await Promise.allSettled([
         sendInfo(socket),
         server.sendMaintenanceList(socket),
@@ -1885,6 +1908,8 @@ async function afterLogin(socket, user) {
         log.debug("server", "emit initServerTimezone");
         socket.emit("initServerTimezone");
     }
+
+    log.info("auth", `afterLogin: completed in ${Date.now() - loginStart}ms (${monitorCount} monitors)`);
 }
 
 /**
@@ -2008,20 +2033,24 @@ async function pauseMonitor(userID, monitorID) {
  */
 async function startMonitors() {
     let list = await R.find("monitor", " active = 1 ");
+    log.info("monitor", `Starting ${list.length} active monitors...`);
 
     for (let monitor of list) {
         server.monitorList[monitor.id] = monitor;
     }
 
+    let started = 0;
     for (let monitor of list) {
         try {
             await monitor.start(io);
+            started++;
         } catch (e) {
-            log.error("monitor", e);
+            log.error("monitor", `Failed to start monitor ${monitor.id} (${monitor.name}): ${e.message}`);
         }
         // Give some delays, so all monitors won't make request at the same moment when just start the server.
         await sleep(getRandomInt(300, 1000));
     }
+    log.info("monitor", `All ${started}/${list.length} monitors started`);
 }
 
 /**

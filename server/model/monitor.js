@@ -427,12 +427,14 @@ class Monitor extends BeanModel {
             if (this.parent) {
                 const immediateParent = await Monitor.getParent(this.id);
                 if (immediateParent) {
-                    // Walk up to root ancestor
+                    // Walk up to root ancestor (depth limit prevents infinite loop on circular refs)
                     let rootAncestor = immediateParent;
                     let next = await Monitor.getParent(rootAncestor.id);
-                    while (next !== null) {
+                    let depth = 0;
+                    while (next !== null && depth < 20) {
                         rootAncestor = next;
                         next = await Monitor.getParent(rootAncestor.id);
+                        depth++;
                     }
                     serviceName = rootAncestor.name;
                     // sub_service = immediate parent if different from root
@@ -1951,9 +1953,15 @@ class Monitor extends BeanModel {
      */
     static getAllChildrenIDsFromTree(monitorID, childrenMap) {
         const result = [];
+        const visited = new Set();
         const stack = [...(childrenMap.get(monitorID) || [])];
         while (stack.length > 0) {
             const id = stack.pop();
+            if (visited.has(id)) {
+                log.warn("monitor", `Circular reference detected at monitor ${id} while collecting children`);
+                continue;
+            }
+            visited.add(id);
             result.push(id);
             const children = childrenMap.get(id) || [];
             for (const child of children) {
@@ -1972,8 +1980,14 @@ class Monitor extends BeanModel {
      */
     static getPathFromTree(monitorID, parentMap, nameMap) {
         const path = [];
+        const visited = new Set();
         let currentID = monitorID;
         while (currentID !== null && currentID !== undefined) {
+            if (visited.has(currentID)) {
+                log.warn("monitor", `Circular parent reference detected at monitor ${currentID} while building path`);
+                break;
+            }
+            visited.add(currentID);
             path.unshift(nameMap.get(currentID) || "");
             currentID = parentMap.get(currentID);
         }
@@ -1988,8 +2002,14 @@ class Monitor extends BeanModel {
      * @returns {boolean} Whether all parent monitors are active
      */
     static isParentActiveFromTree(monitorID, parentMap, activeMap) {
+        const visited = new Set();
         let currentID = parentMap.get(monitorID);
         while (currentID !== null && currentID !== undefined) {
+            if (visited.has(currentID)) {
+                log.warn("monitor", `Circular parent reference detected at monitor ${currentID} while checking active status`);
+                break;
+            }
+            visited.add(currentID);
             if (!activeMap.get(currentID)) {
                 return false;
             }
@@ -2035,8 +2055,14 @@ class Monitor extends BeanModel {
         // For each monitor: check self and all ancestors
         for (const monitorID of monitorIDs) {
             let underMaintenance = false;
+            const visited = new Set();
             let currentID = monitorID;
             while (currentID !== null && currentID !== undefined) {
+                if (visited.has(currentID)) {
+                    log.warn("monitor", `Circular parent reference detected at monitor ${currentID} while checking maintenance`);
+                    break;
+                }
+                visited.add(currentID);
                 if (activeMaintenanceMonitors.has(currentID)) {
                     underMaintenance = true;
                     break;
@@ -2056,6 +2082,7 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>>} object
      */
     static async preparePreloadData(monitorData) {
+        const preloadStart = Date.now();
         const notificationsMap = new Map();
         const tagsMap = new Map();
         const maintenanceStatusMap = new Map();
@@ -2109,6 +2136,11 @@ class Monitor extends BeanModel {
                     color: row.color,
                 });
             });
+        }
+
+        const preloadElapsed = Date.now() - preloadStart;
+        if (preloadElapsed > 1000) {
+            log.warn("monitor", `preparePreloadData took ${preloadElapsed}ms for ${monitorData.length} monitors`);
         }
 
         return {
