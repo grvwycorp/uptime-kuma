@@ -279,6 +279,13 @@ type monitorHashData struct {
 	Location                         *string `json:"location,omitempty"`
 	Protocol                         *string `json:"protocol,omitempty"`
 	Parent                           *int64  `json:"parent,omitempty"`
+	Weight                           int     `json:"weight"`
+	ExpectedTLSAlert                 *string `json:"expectedTlsAlert,omitempty"`
+	AuthDomain                       *string `json:"authDomain,omitempty"`
+	AuthWorkstation                  *string `json:"authWorkstation,omitempty"`
+	MQTTWebsocketPath                *string `json:"mqttWebsocketPath,omitempty"`
+	ScreenshotDelay                  *int64  `json:"screenshotDelay,omitempty"`
+	ManualStatus                     *int64  `json:"manual_status,omitempty"`
 }
 
 // nullStringPtr returns a pointer to the string value if valid, nil otherwise.
@@ -392,6 +399,13 @@ func (m *Monitor) ComputeHash() string {
 		Location:                         nullStringPtr(m.Location),
 		Protocol:                         nullStringPtr(m.Protocol),
 		Parent:                           nullInt64Ptr(m.Parent),
+		Weight:                           m.Weight,
+		ExpectedTLSAlert:                 nullStringPtr(m.ExpectedTLSAlert),
+		AuthDomain:                       nullStringPtr(m.AuthDomain),
+		AuthWorkstation:                  nullStringPtr(m.AuthWorkstation),
+		MQTTWebsocketPath:                nullStringPtr(m.MQTTWebsocketPath),
+		ScreenshotDelay:                  nullInt64Ptr(m.ScreenshotDelay),
+		ManualStatus:                     nullInt64Ptr(m.ManualStatus),
 	}
 
 	jsonData, _ := json.Marshal(data)
@@ -409,6 +423,7 @@ func (m *Monitor) ToKumaPayload() map[string]interface{} {
 		"maxretries":     m.MaxRetries,
 		"retryInterval":  m.RetryInterval,
 		"resendInterval": m.ResendInterval,
+		"weight":         m.Weight,
 	}
 
 	// Add ID if present (for edit operations)
@@ -431,6 +446,7 @@ func (m *Monitor) ToKumaPayload() map[string]interface{} {
 	}
 
 	addNullString("description", m.Description)
+	addNullString("subtype", m.Subtype)
 	addNullString("url", m.URL)
 	addNullString("method", m.Method)
 	addNullString("body", m.Body)
@@ -446,7 +462,10 @@ func (m *Monitor) ToKumaPayload() map[string]interface{} {
 	addNullString("tlsCa", m.TLSCa)
 	addNullString("tlsCert", m.TLSCert)
 	addNullString("tlsKey", m.TLSKey)
+	addNullString("expectedTlsAlert", m.ExpectedTLSAlert)
 	addNullString("authMethod", m.AuthMethod)
+	addNullString("authDomain", m.AuthDomain)
+	addNullString("authWorkstation", m.AuthWorkstation)
 	addNullString("basic_auth_user", m.BasicAuthUser)
 	addNullString("basic_auth_pass", m.BasicAuthPass)
 	addNullString("jsonPath", m.JSONPath)
@@ -457,6 +476,7 @@ func (m *Monitor) ToKumaPayload() map[string]interface{} {
 	addNullString("mqttPassword", m.MQTTPassword)
 	addNullString("mqttSuccessMessage", m.MQTTSuccessMessage)
 	addNullString("mqttCheckType", m.MQTTCheckType)
+	addNullString("mqttWebsocketPath", m.MQTTWebsocketPath)
 	addNullString("databaseConnectionString", m.DatabaseConnectionString)
 	addNullString("databaseQuery", m.DatabaseQuery)
 	addNullString("docker_container", m.DockerContainer)
@@ -478,28 +498,51 @@ func (m *Monitor) ToKumaPayload() map[string]interface{} {
 	addNullString("radiusCalledStationId", m.RadiusCalledStationID)
 	addNullString("radiusCallingStationId", m.RadiusCallingStationID)
 	addNullString("kafkaProducerTopic", m.KafkaProducerTopic)
-	addNullString("kafkaProducerBrokers", m.KafkaProducerBrokers)
-	addNullString("kafkaProducerSaslOptions", m.KafkaProducerSaslOptions)
 	addNullString("kafkaProducerMessage", m.KafkaProducerMessage)
-	addNullString("rabbitmqNodes", m.RabbitMQNodes)
 	addNullString("rabbitmqUsername", m.RabbitMQUsername)
 	addNullString("rabbitmqPassword", m.RabbitMQPassword)
 	addNullString("snmpOid", m.SNMPOid)
 	addNullString("snmpVersion", m.SNMPVersion)
 	addNullString("smtpSecurity", m.SMTPSecurity)
 	addNullString("wsSubprotocol", m.WSSubprotocol)
-	addNullString("conditions", m.Conditions)
+
+	// JSON-encoded fields: parse from DB string into objects so the Uptime Kuma
+	// server can JSON.stringify() them correctly (avoids double-stringification).
+	addJSONField := func(key string, ns sql.NullString) {
+		if !ns.Valid {
+			return
+		}
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(ns.String), &parsed); err == nil {
+			payload[key] = parsed
+		} else {
+			payload[key] = ns.String
+		}
+	}
+
+	addJSONField("kafkaProducerBrokers", m.KafkaProducerBrokers)
+	addJSONField("kafkaProducerSaslOptions", m.KafkaProducerSaslOptions)
+	addJSONField("rabbitmqNodes", m.RabbitMQNodes)
+	addJSONField("conditions", m.Conditions)
 	addNullInt("proxyId", m.ProxyID)
 	addNullString("ipFamily", m.IPFamily)
 	addNullString("remote_browser", m.RemoteBrowser)
+	addNullInt("screenshotDelay", m.ScreenshotDelay)
 	addNullInt("responseMaxLength", m.ResponseMaxLength)
 	addNullString("system_service_name", m.SystemServiceName)
+	addNullInt("manual_status", m.ManualStatus)
 	addNullString("location", m.Location)
 	addNullString("protocol", m.Protocol)
 
-	// Parent field for group relationships
-	// Note: This value will be remapped by the reconciler from master ID to probe local ID
-	addNullInt("parent", m.Parent)
+	// Parent field for group relationships - MUST ALWAYS be present in payload.
+	// When Parent is not valid (root-level monitor), explicitly send null so the
+	// probe's editMonitor handler sets bean.parent = null (clearing group assignment)
+	// instead of bean.parent = undefined (which preserves the old value).
+	if m.Parent.Valid {
+		payload["parent"] = m.Parent.Int64
+	} else {
+		payload["parent"] = nil
+	}
 
 	// Boolean/int flags
 	payload["ignoreTls"] = m.IgnoreTLS == 1

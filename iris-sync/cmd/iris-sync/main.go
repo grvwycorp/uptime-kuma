@@ -23,6 +23,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "Log planned actions without executing them")
 	once := flag.Bool("once", false, "Run sync once and exit")
 	verbose := flag.Bool("verbose", false, "Enable verbose logging")
+	forceResync := flag.Bool("force-resync", false, "Clear all hash caches to force full resync of all monitors")
 	flag.Parse()
 
 	// Load configuration - prefer environment variables for Docker deployment
@@ -96,6 +97,18 @@ func main() {
 
 	// Initialize mapping store for persistence
 	mappingStore := isync.NewMappingStore("./data/mappings")
+
+	// Force resync: clear all hash caches so every monitor gets re-synced
+	if *forceResync {
+		logger.Info("force resync requested, clearing all hash caches")
+		for _, probeCfg := range cfg.GetEnabledProbes() {
+			mapping := mappingStore.GetMapping(probeCfg.Name)
+			for _, masterID := range mapping.GetAllMasterIDs() {
+				mapping.SetHash(masterID, "")
+			}
+			logger.Info("cleared hash cache", "probe", probeCfg.Name)
+		}
+	}
 
 	// Create reconciler
 	reconciler := isync.NewReconciler(logger, cfg.Sync.DeleteOrphans, cfg.Sync.OperationTimeout)
@@ -293,7 +306,31 @@ func syncToProbe(
 	}
 
 	// Execute sync plan
-	return reconciler.ExecuteSyncPlan(syncCtx, kumaClient, plans, mapping, syncCfg.DryRun)
+	stats, err := reconciler.ExecuteSyncPlan(syncCtx, kumaClient, plans, mapping, syncCfg.DryRun)
+	if err != nil {
+		return stats, err
+	}
+
+	// Post-sync drift verification (only after actual changes, not dry-run)
+	if !syncCfg.DryRun && (stats.Creates > 0 || stats.Updates > 0) {
+		// Brief delay to let probe process the last operation
+		time.Sleep(2 * time.Second)
+
+		drifts, driftErr := reconciler.VerifyParentDrift(syncCtx, kumaClient, masterMonitors, mapping)
+		if driftErr != nil {
+			logger.Warn("drift verification failed", "error", driftErr)
+		} else if len(drifts) > 0 {
+			logger.Warn("parent drift detected after sync", "drift_count", len(drifts))
+			// Invalidate hashes for drifted monitors to force re-sync next cycle
+			for _, d := range drifts {
+				mapping.SetHash(d.MasterID, "")
+			}
+		} else {
+			logger.Info("drift verification passed - no parent mismatches")
+		}
+	}
+
+	return stats, nil
 }
 
 // filterMonitorsForProbe filters monitors based on probe-specific tags/types configuration.

@@ -637,3 +637,77 @@ func FilterMonitorsByTypes(monitors map[int64]*db.Monitor, types []string) map[i
 
 	return filtered
 }
+
+// DriftResult holds the result of a single drift check for one monitor.
+type DriftResult struct {
+	MonitorName    string
+	MasterID       int64
+	ProbeID        int64
+	ExpectedParent int64 // 0 means root (no parent)
+	ActualParent   int64 // 0 means root
+}
+
+// VerifyParentDrift re-fetches the probe's monitor list after sync and compares
+// parent assignments against master expectations. Returns any mismatches found.
+func (r *Reconciler) VerifyParentDrift(
+	ctx context.Context,
+	kumaClient *client.KumaClient,
+	masterMonitors map[int64]*db.Monitor,
+	mapping *IDMapping,
+) ([]DriftResult, error) {
+	probeMonitors, err := kumaClient.GetMonitorList(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-fetch probe monitors for drift check: %w", err)
+	}
+
+	var drifts []DriftResult
+
+	for masterID, masterMon := range masterMonitors {
+		probeID, exists := mapping.GetProbeID(masterID)
+		if !exists {
+			continue
+		}
+
+		probeMon, probeExists := probeMonitors[probeID]
+		if !probeExists {
+			continue
+		}
+
+		// Determine expected parent on probe (remap master parent ID)
+		var expectedProbeParent int64
+		if masterMon.Parent.Valid {
+			if probeParentID, ok := mapping.GetProbeID(masterMon.Parent.Int64); ok {
+				expectedProbeParent = probeParentID
+			}
+			// If parent not mapped, expected is 0 (root) since reconciler clears it
+		}
+
+		// Determine actual parent on probe
+		var actualProbeParent int64
+		if probeMon.Parent.Valid {
+			actualProbeParent = probeMon.Parent.Int64
+		}
+
+		if expectedProbeParent != actualProbeParent {
+			drifts = append(drifts, DriftResult{
+				MonitorName:    masterMon.Name,
+				MasterID:       masterID,
+				ProbeID:        probeID,
+				ExpectedParent: expectedProbeParent,
+				ActualParent:   actualProbeParent,
+			})
+		}
+	}
+
+	for _, d := range drifts {
+		r.logger.Warn("DRIFT DETECTED: parent mismatch after sync",
+			"monitor", d.MonitorName,
+			"master_id", d.MasterID,
+			"probe_id", d.ProbeID,
+			"expected_parent", d.ExpectedParent,
+			"actual_parent", d.ActualParent,
+		)
+	}
+
+	return drifts, nil
+}

@@ -119,7 +119,7 @@ jobs:
   # ============================================
   # Probe deployment
   # Uses matrix to deploy to ALL probe runners
-  # Add unique labels to runners: probe01, debian, etc.
+  # Add unique labels to runners: probe01, etc.
   # ============================================
   deploy-probes:
     if: >
@@ -131,7 +131,7 @@ jobs:
       matrix:
         probe:
           - probe01
-          - debianbook
+          # - debianbook  # Retired – removed from deployment
     runs-on: [self-hosted, probe, '${{ matrix.probe }}']
     timeout-minutes: 15
 

@@ -101,10 +101,11 @@ services:
           endpoint: http://100.97.5.70:3001
           username: ${IRIS_PROBE_USER:-admin}
           password: ${IRIS_PROBE_PASSWORD}
-        - name: debian
-          endpoint: http://100.87.62.9:3001
-          username: ${IRIS_PROBE_USER:-admin}
-          password: ${IRIS_PROBE_PASSWORD}
+        # Retired – debian/debianbook removed from deployment
+        # - name: debian
+        #   endpoint: http://100.87.62.9:3001
+        #   username: ${IRIS_PROBE_USER:-admin}
+        #   password: ${IRIS_PROBE_PASSWORD}
       # Sync settings
       IRIS_SYNC_INTERVAL: 5m
       IRIS_SYNC_DELETE_ORPHANS: "true"

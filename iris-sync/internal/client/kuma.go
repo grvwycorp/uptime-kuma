@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -607,6 +608,14 @@ func parseMonitorList(data map[string]interface{}) map[int64]*db.Monitor {
 		}
 		if interval, ok := rawMonitor["interval"].(float64); ok {
 			monitor.Interval = int(interval)
+		}
+		// Parse parent for drift verification (null/absent means root level)
+		if parent, ok := rawMonitor["parent"].(float64); ok {
+			monitor.Parent = sql.NullInt64{Int64: int64(parent), Valid: true}
+		}
+		// Parse weight for ordering verification
+		if weight, ok := rawMonitor["weight"].(float64); ok {
+			monitor.Weight = int(weight)
 		}
 
 		monitors[id] = monitor

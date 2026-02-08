@@ -874,6 +874,7 @@ let needSetup = false;
                 bean.name = monitor.name;
                 bean.description = monitor.description;
                 bean.parent = monitor.parent;
+                bean.weight = monitor.weight;
                 bean.type = monitor.type;
                 bean.subtype = monitor.subtype;
                 bean.url = monitor.url;
