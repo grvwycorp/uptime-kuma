@@ -221,7 +221,15 @@ func (r *Reconciler) ExecuteSyncPlan(
 	}
 
 	// --- Phase 1: Updates (highest priority - fixes drift on existing monitors) ---
-	for _, plan := range updates {
+	// Cap update timeout at 30s: if the probe doesn't respond within 30s the
+	// editMonitor handler is likely stuck; the WebSocket will die at ~45s anyway
+	// (ping_interval 25s + ping_timeout 20s).
+	updateTimeout := r.operationTimeout
+	if updateTimeout > 30*time.Second {
+		updateTimeout = 30 * time.Second
+	}
+
+	for i, plan := range updates {
 		select {
 		case <-ctx.Done():
 			return stats, ctx.Err()
@@ -249,7 +257,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 			}
 		}
 
-		opCtx, opCancel := context.WithTimeout(ctx, r.operationTimeout)
+		opCtx, opCancel := context.WithTimeout(ctx, updateTimeout)
 		err := r.executeUpdate(opCtx, kumaClient, plan, mapping, dryRun)
 		opCancel()
 		if err != nil {
@@ -260,6 +268,14 @@ func (r *Reconciler) ExecuteSyncPlan(
 				"name", plan.Monitor.Name,
 				"error", err,
 			)
+			// Abort if WebSocket connection died — no point trying remaining operations
+			if !kumaClient.IsConnected() {
+				r.logger.Error("connection lost, aborting remaining updates",
+					"completed", stats.Updates,
+					"remaining", len(updates)-i-1,
+				)
+				break
+			}
 		} else {
 			stats.Updates++
 		}
@@ -285,7 +301,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 	// Track failed creates so we can skip dependent children.
 	failedCreates := make(map[int64]bool)
 
-	for _, plan := range sortedCreates {
+	for i, plan := range sortedCreates {
 		select {
 		case <-ctx.Done():
 			return stats, ctx.Err()
@@ -343,7 +359,14 @@ func (r *Reconciler) ExecuteSyncPlan(
 				"name", plan.Monitor.Name,
 				"error", err,
 			)
-			// Don't abort on create failure - continue with remaining creates
+			// Abort if WebSocket connection died — no point trying remaining operations
+			if !kumaClient.IsConnected() {
+				r.logger.Error("connection lost, aborting remaining creates",
+					"completed", stats.Creates,
+					"remaining", len(sortedCreates)-i-1,
+				)
+				break
+			}
 			continue
 		}
 		stats.Creates++
@@ -353,6 +376,11 @@ func (r *Reconciler) ExecuteSyncPlan(
 	}
 
 	// --- Phase 3: Deletes (children before parents) ---
+	deleteTimeout := r.operationTimeout
+	if deleteTimeout > 30*time.Second {
+		deleteTimeout = 30 * time.Second
+	}
+
 	for i := len(deletes) - 1; i >= 0; i-- {
 		plan := deletes[i]
 		select {
@@ -361,7 +389,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 		default:
 		}
 
-		opCtx, opCancel := context.WithTimeout(ctx, r.operationTimeout)
+		opCtx, opCancel := context.WithTimeout(ctx, deleteTimeout)
 		err := r.executeDelete(opCtx, kumaClient, plan, mapping, dryRun)
 		opCancel()
 		if err != nil {
@@ -371,6 +399,13 @@ func (r *Reconciler) ExecuteSyncPlan(
 				"probe_id", plan.ProbeID,
 				"error", err,
 			)
+			// Abort if WebSocket connection died
+			if !kumaClient.IsConnected() {
+				r.logger.Error("connection lost, aborting remaining deletes",
+					"completed", stats.Deletes,
+				)
+				break
+			}
 		} else {
 			stats.Deletes++
 		}

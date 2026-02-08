@@ -2205,11 +2205,13 @@ class Monitor extends BeanModel {
     }
 
     /**
-     * Gets recursive all child ids
+     * Gets recursive all child ids.
+     * Uses a visited set to detect circular parent references and avoid infinite loops.
      * @param {number} monitorID ID of the monitor to get
+     * @param {Set} visited Set of already-visited monitor IDs (for cycle detection)
      * @returns {Promise<Array>} IDs of all children
      */
-    static async getAllChildrenIDs(monitorID) {
+    static async getAllChildrenIDs(monitorID, visited = new Set()) {
         const childs = await Monitor.getChildren(monitorID);
 
         if (childs === null) {
@@ -2219,8 +2221,13 @@ class Monitor extends BeanModel {
         let childrenIDs = [];
 
         for (const child of childs) {
+            if (visited.has(child.id)) {
+                log.warn("monitor", `Circular parent reference detected at monitor ${child.id} in getAllChildrenIDs`);
+                continue;
+            }
+            visited.add(child.id);
             childrenIDs.push(child.id);
-            childrenIDs = childrenIDs.concat(await Monitor.getAllChildrenIDs(child.id));
+            childrenIDs = childrenIDs.concat(await Monitor.getAllChildrenIDs(child.id, visited));
         }
 
         return childrenIDs;
@@ -2279,19 +2286,30 @@ class Monitor extends BeanModel {
     }
 
     /**
-     * Checks recursive if parent (ancestors) are active
-     * @param {number} monitorID ID of the monitor to get
-     * @returns {Promise<boolean>} Is the parent monitor active?
+     * Checks iteratively if all parent (ancestor) monitors are active.
+     * Uses a visited set to detect circular parent references and avoid infinite loops.
+     * @param {number} monitorID ID of the monitor to check
+     * @returns {Promise<boolean>} Whether all parent monitors are active
      */
     static async isParentActive(monitorID) {
-        const parent = await Monitor.getParent(monitorID);
+        const visited = new Set();
+        let currentID = monitorID;
 
-        if (parent === null) {
-            return true;
+        while (true) {
+            const parent = await Monitor.getParent(currentID);
+            if (parent === null) {
+                return true;
+            }
+            if (visited.has(parent.id)) {
+                log.warn("monitor", `Circular parent reference detected at monitor ${parent.id} in isParentActive`);
+                return false;
+            }
+            visited.add(parent.id);
+            if (!parent.active) {
+                return false;
+            }
+            currentID = parent.id;
         }
-
-        const parentActive = await Monitor.isParentActive(parent.id);
-        return parent.active && parentActive;
     }
 
     /**
