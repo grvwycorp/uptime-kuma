@@ -192,9 +192,10 @@ func (r *Reconciler) ComputeSyncPlan(
 	return plans
 }
 
-// ExecuteSyncPlan executes the sync operations against a probe with topological ordering.
-// Creates are sorted topologically so parents are created before children at any nesting
-// depth, with parent IDs remapped from master to probe-local IDs.
+// ExecuteSyncPlan executes the sync operations against a probe.
+// Order: updates first (fix existing monitors), then creates (topologically sorted so
+// parents come before children), then deletes. Updates run first because they fix drift
+// on existing monitors and must not be blocked by slow or failing creates.
 // Returns statistics about the sync operation.
 func (r *Reconciler) ExecuteSyncPlan(
 	ctx context.Context,
@@ -219,92 +220,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 		}
 	}
 
-	// Topological sort of creates: parents before children at any depth.
-	sortedCreates := r.topologicalSortCreates(creates)
-
-	// Build index of master IDs being created in this batch for dependency tracking.
-	createBatch := make(map[int64]bool, len(sortedCreates))
-	for _, plan := range sortedCreates {
-		createBatch[plan.MasterID] = true
-	}
-
-	// Track failed creates so we can skip dependent children.
-	failedCreates := make(map[int64]bool)
-
-	// Create monitors in dependency order with parent ID remapping
-	for _, plan := range sortedCreates {
-		select {
-		case <-ctx.Done():
-			return stats, ctx.Err()
-		default:
-		}
-
-		// Skip children whose parent creation failed in this cycle.
-		// They'll be retried next cycle when their parent may succeed.
-		if plan.Monitor.Parent.Valid {
-			masterParentID := plan.Monitor.Parent.Int64
-			if createBatch[masterParentID] && failedCreates[masterParentID] {
-				r.logger.Warn("skipping monitor creation - parent failed in this cycle",
-					"monitor", plan.Monitor.Name,
-					"master_id", plan.MasterID,
-					"failed_parent_id", masterParentID,
-				)
-				stats.Skipped++
-				failedCreates[plan.MasterID] = true // Cascade: grandchildren also skip
-				continue
-			}
-		}
-
-		// Remap parent ID from master to probe-local ID
-		parentCleared := false
-		if plan.Monitor.Parent.Valid {
-			masterParentID := plan.Monitor.Parent.Int64
-			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
-				plan.Monitor.Parent = sql.NullInt64{Int64: probeParentID, Valid: true}
-				r.logger.Info("remapped parent ID",
-					"monitor", plan.Monitor.Name,
-					"master_parent_id", masterParentID,
-					"probe_parent_id", probeParentID,
-				)
-			} else {
-				r.logger.Warn("parent not found on probe, clearing parent reference",
-					"monitor", plan.Monitor.Name,
-					"master_parent_id", masterParentID,
-				)
-				plan.Monitor.Parent = sql.NullInt64{Valid: false}
-				parentCleared = true
-			}
-		}
-
-		// If parent was cleared (not found on probe), store empty hash so next
-		// sync cycle detects a change and re-syncs with the correct parent.
-		if parentCleared {
-			plan.Monitor.ContentHash = ""
-		}
-
-		opCtx, opCancel := context.WithTimeout(ctx, r.operationTimeout)
-		err := r.executeCreate(opCtx, kumaClient, plan, mapping, dryRun)
-		opCancel()
-		if err != nil {
-			stats.Errors++
-			failedCreates[plan.MasterID] = true
-			r.logger.Error("failed to create monitor",
-				"master_id", plan.MasterID,
-				"name", plan.Monitor.Name,
-				"error", err,
-			)
-		} else {
-			stats.Creates++
-			// Throttle creates: give the probe time to start the monitor and fire
-			// the first beat before sending the next create. Without this, bulk
-			// creates cause a thundering herd that saturates the probe's event loop.
-			if !dryRun {
-				time.Sleep(1 * time.Second)
-			}
-		}
-	}
-
-	// Updates (also need parent ID remapping)
+	// --- Phase 1: Updates (highest priority - fixes drift on existing monitors) ---
 	for _, plan := range updates {
 		select {
 		case <-ctx.Done():
@@ -312,7 +228,7 @@ func (r *Reconciler) ExecuteSyncPlan(
 		default:
 		}
 
-		// Remap parent ID for updates as well
+		// Remap parent ID for updates
 		if plan.Monitor.Parent.Valid {
 			masterParentID := plan.Monitor.Parent.Int64
 			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
@@ -349,7 +265,94 @@ func (r *Reconciler) ExecuteSyncPlan(
 		}
 	}
 
-	// Deletes (process in reverse to delete children before parents)
+	// --- Phase 2: Creates (topologically sorted, parents before children) ---
+	// Cap create timeout at 30s: creates should be fast. If the probe doesn't
+	// respond within 30s the add handler is likely stuck; retrying next cycle
+	// is better than starving updates.
+	createTimeout := r.operationTimeout
+	if createTimeout > 30*time.Second {
+		createTimeout = 30 * time.Second
+	}
+
+	sortedCreates := r.topologicalSortCreates(creates)
+
+	// Build index of master IDs being created in this batch for dependency tracking.
+	createBatch := make(map[int64]bool, len(sortedCreates))
+	for _, plan := range sortedCreates {
+		createBatch[plan.MasterID] = true
+	}
+
+	// Track failed creates so we can skip dependent children.
+	failedCreates := make(map[int64]bool)
+
+	for _, plan := range sortedCreates {
+		select {
+		case <-ctx.Done():
+			return stats, ctx.Err()
+		default:
+		}
+
+		// Skip children whose parent creation failed in this cycle.
+		if plan.Monitor.Parent.Valid {
+			masterParentID := plan.Monitor.Parent.Int64
+			if createBatch[masterParentID] && failedCreates[masterParentID] {
+				r.logger.Warn("skipping monitor creation - parent failed in this cycle",
+					"monitor", plan.Monitor.Name,
+					"master_id", plan.MasterID,
+					"failed_parent_id", masterParentID,
+				)
+				stats.Skipped++
+				failedCreates[plan.MasterID] = true
+				continue
+			}
+		}
+
+		// Remap parent ID from master to probe-local ID
+		parentCleared := false
+		if plan.Monitor.Parent.Valid {
+			masterParentID := plan.Monitor.Parent.Int64
+			if probeParentID, exists := mapping.GetProbeID(masterParentID); exists {
+				plan.Monitor.Parent = sql.NullInt64{Int64: probeParentID, Valid: true}
+				r.logger.Info("remapped parent ID",
+					"monitor", plan.Monitor.Name,
+					"master_parent_id", masterParentID,
+					"probe_parent_id", probeParentID,
+				)
+			} else {
+				r.logger.Warn("parent not found on probe, clearing parent reference",
+					"monitor", plan.Monitor.Name,
+					"master_parent_id", masterParentID,
+				)
+				plan.Monitor.Parent = sql.NullInt64{Valid: false}
+				parentCleared = true
+			}
+		}
+
+		if parentCleared {
+			plan.Monitor.ContentHash = ""
+		}
+
+		opCtx, opCancel := context.WithTimeout(ctx, createTimeout)
+		err := r.executeCreate(opCtx, kumaClient, plan, mapping, dryRun)
+		opCancel()
+		if err != nil {
+			stats.Errors++
+			failedCreates[plan.MasterID] = true
+			r.logger.Error("failed to create monitor",
+				"master_id", plan.MasterID,
+				"name", plan.Monitor.Name,
+				"error", err,
+			)
+			// Don't abort on create failure - continue with remaining creates
+			continue
+		}
+		stats.Creates++
+		if !dryRun {
+			time.Sleep(1 * time.Second)
+		}
+	}
+
+	// --- Phase 3: Deletes (children before parents) ---
 	for i := len(deletes) - 1; i >= 0; i-- {
 		plan := deletes[i]
 		select {
