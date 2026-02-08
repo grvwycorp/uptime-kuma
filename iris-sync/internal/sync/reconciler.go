@@ -114,6 +114,10 @@ func (r *Reconciler) ComputeSyncPlan(
 				mapping.SetMapping(masterID, existingProbe.ID)
 				mapping.SetHash(masterID, "") // Force update on first sync
 
+				// Remove from name index so duplicate-named master monitors
+				// don't fight over the same probe monitor every cycle.
+				delete(probeByName, masterMon.Name)
+
 				updateMon := *masterMon
 				updateMon.ID = existingProbe.ID
 				plans = append(plans, SyncPlan{
