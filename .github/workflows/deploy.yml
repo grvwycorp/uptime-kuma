@@ -148,6 +148,7 @@ jobs:
       matrix:
         probe:
           - probe01
+          - labbmartin
           # - debianbook  # Retired – removed from deployment
     runs-on: [self-hosted, probe, '${{ matrix.probe }}']
     timeout-minutes: 15

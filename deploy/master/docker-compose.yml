@@ -102,6 +102,10 @@ services:
           endpoint: http://100.97.5.70:3001
           username: ${IRIS_PROBE_USER:-admin}
           password: ${IRIS_PROBE_PASSWORD}
+        - name: labbmartin
+          endpoint: http://100.88.142.75:3001
+          username: ${IRIS_PROBE_USER:-admin}
+          password: ${IRIS_PROBE_PASSWORD}
         # Retired – debian/debianbook removed from deployment
         # - name: debian
         #   endpoint: http://100.87.62.9:3001
