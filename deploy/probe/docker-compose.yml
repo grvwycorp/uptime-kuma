@@ -22,13 +22,12 @@ services:
       # Note: MagicDNS names don't resolve inside Docker bridge containers,
       # so we use the Tailscale IP directly via IRIS_MASTER_IP org secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://${IRIS_MASTER_IP}:4318
-    ports:
-      - "3001:3001"
     volumes:
       - iris-probe-data:/app/data
-    # Bridge mode works since Tailscale runs on host - traffic routes through host's tailscale0
-    # Use host mode if you need the probe to be directly reachable via Tailscale IP
-    network_mode: bridge
+    # Host network mode: avoids creating a new network namespace, which fixes
+    # "sysctl ip_unprivileged_port_start: permission denied" on unprivileged LXC containers.
+    # Also makes the probe directly reachable via Tailscale IP.
+    network_mode: host
 
 volumes:
   iris-probe-data:
