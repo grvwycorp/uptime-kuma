@@ -31,6 +31,10 @@ exporters:
     headers:
       Authorization: 'Basic ${env:GRAFANA_OTLP_HEADERS}'
 
+  # Local Prometheus exporter for iris-catalog
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
 service:
   pipelines:
     traces:
@@ -41,7 +45,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug, otlp_http/grafana]
+      exporters: [debug, otlp_http/grafana, prometheus]
 
     logs:
       receivers: [otlp]

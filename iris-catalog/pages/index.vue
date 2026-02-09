@@ -1,0 +1,157 @@
+<template>
+    <div class="landing">
+        <header class="landing-header">
+            <h1>Iris Catalog</h1>
+            <p>Service documentation and live monitoring reference</p>
+        </header>
+
+        <div v-if="loading" class="landing-loading">Loading monitors...</div>
+
+        <div v-else class="service-grid">
+            <NuxtLink
+                v-for="group in topLevelGroups"
+                :key="group.id"
+                :to="`/catalog/${group.id}`"
+                class="service-card"
+            >
+                <div class="card-status">
+                    <StatusBadge :status="getAggregated(group.id)" />
+                </div>
+                <h2>{{ group.name }}</h2>
+                <p class="card-desc" v-if="group.description">
+                    {{ truncate(group.description, 120) }}
+                </p>
+                <div class="card-meta">
+                    <span>{{ getChildCount(group.id) }} monitors</span>
+                    <span v-if="group.tags?.length">
+                        {{ group.tags.map((t: any) => t.name).join(', ') }}
+                    </span>
+                </div>
+            </NuxtLink>
+        </div>
+
+        <div v-if="!loading && topLevelGroups.length === 0" class="landing-empty">
+            <p>No monitor groups found. Connect to an Uptime Kuma instance with monitors.</p>
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import type { MonitorData } from "~/server/utils/kuma-state";
+
+const { monitors, loading } = useMonitors();
+const { status } = useStatus();
+
+const topLevelGroups = computed(() => {
+    return Object.values(monitors.value)
+        .filter((m: MonitorData) => m.type === "group" && !m.parent)
+        .sort((a, b) => (a.weight ?? 2000) - (b.weight ?? 2000));
+});
+
+/**
+ * Get aggregated status across all probes
+ * @param id - monitor ID
+ * @returns status string
+ */
+function getAggregated(id: number): "up" | "down" | "degraded" | "unknown" {
+    return status.value[String(id)]?.aggregated || "unknown";
+}
+
+/**
+ * Count all child monitors (recursive)
+ * @param id - group monitor ID
+ * @returns child count
+ */
+function getChildCount(id: number): number {
+    const m = monitors.value[String(id)];
+    return m?.childrenIDs?.length ?? 0;
+}
+
+/**
+ * Truncate text to max length
+ * @param text - input text
+ * @param max - max characters
+ * @returns truncated text
+ */
+function truncate(text: string, max: number): string {
+    if (text.length <= max) {
+        return text;
+    }
+    return text.slice(0, max).trimEnd() + "...";
+}
+</script>
+
+<style scoped>
+.landing {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 24px;
+}
+
+.landing-header {
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.landing-header h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin: 0 0 8px;
+}
+
+.landing-header p {
+    color: #6b7280;
+    font-size: 16px;
+}
+
+.landing-loading, .landing-empty {
+    text-align: center;
+    color: #9ca3af;
+    padding: 48px;
+}
+
+.service-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.service-card {
+    display: block;
+    padding: 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.service-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 2px 12px rgba(59, 130, 246, 0.1);
+}
+
+.card-status {
+    margin-bottom: 8px;
+}
+
+.service-card h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 6px;
+}
+
+.card-desc {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+
+.card-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: #9ca3af;
+}
+</style>

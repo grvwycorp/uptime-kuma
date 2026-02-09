@@ -74,6 +74,7 @@ services:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
       - "8888:8888"   # Prometheus metrics (collector self-metrics)
+      - "8889:8889"   # Prometheus exporter (probe metrics for iris-catalog)
     depends_on:
       - iris-web
     networks:
@@ -118,6 +119,27 @@ services:
     depends_on:
       iris-db:
         condition: service_healthy
+
+  iris-catalog:
+    build:
+      context: ../../iris-catalog
+      dockerfile: Dockerfile
+    container_name: iris-catalog
+    restart: unless-stopped
+    environment:
+      KUMA_URL: http://iris-web:3001
+      KUMA_USERNAME: ${IRIS_MASTER_USER:-admin}
+      KUMA_PASSWORD: ${IRIS_MASTER_PASSWORD}
+      OTEL_PROM_URL: http://iris-otel:8889/metrics
+      AUTH_USERNAME: ${CATALOG_USER:-admin}
+      AUTH_PASSWORD: ${CATALOG_PASSWORD:-}
+    ports:
+      - "3002:3000"
+    depends_on:
+      - iris-web
+      - iris-otel
+    networks:
+      - iris-network
 
 secrets:
   db_root_password:

@@ -76,6 +76,9 @@ jobs:
           # Probe credentials for iris-sync to authenticate with probes
           IRIS_PROBE_USER: ${{ secrets.IRIS_PROBE_USER }}
           IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
+          # Catalog auth credentials
+          CATALOG_USER: ${{ secrets.CATALOG_USER }}
+          CATALOG_PASSWORD: ${{ secrets.CATALOG_PASSWORD }}
         run: |
           docker compose -p iris up -d --remove-orphans
           # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
@@ -112,6 +115,20 @@ jobs:
             docker compose -p iris -f deploy/master/docker-compose.yml logs iris-sync
             # Don't fail deployment if sync isn't running (probes may not be up yet)
           fi
+
+      - name: Health check (iris-catalog)
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:3002/api/health > /dev/null; then
+              echo "Iris catalog is healthy"
+              exit 0
+            fi
+            echo "Waiting for Iris catalog... ($i/30)"
+            sleep 2
+          done
+          echo "Warning: iris-catalog health check failed"
+          docker compose -p iris -f deploy/master/docker-compose.yml logs iris-catalog 2>&1 | tail -30
+          # Don't fail deployment if catalog isn't ready yet
 
       - name: Cleanup old images
         run: docker image prune -f
