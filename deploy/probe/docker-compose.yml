@@ -26,6 +26,9 @@ services:
       - "3001:3001"
     volumes:
       - iris-probe-data:/app/data
+    # Required for embedded MariaDB to bind to port 3306 inside the container
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
     # Bridge mode works since Tailscale runs on host - traffic routes through host's tailscale0
     # Use host mode if you need the probe to be directly reachable via Tailscale IP
     network_mode: bridge
