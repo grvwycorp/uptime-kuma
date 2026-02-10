@@ -33,6 +33,10 @@
         <div v-if="!loading && topLevelGroups.length === 0" class="landing-empty">
             <p>No monitor groups found. Connect to an Uptime Kuma instance with monitors.</p>
         </div>
+
+        <div v-if="lastUpdated" class="landing-footer">
+            Status updated {{ formatAge(lastUpdated) }}
+        </div>
     </div>
 </template>
 
@@ -40,7 +44,7 @@
 import type { MonitorData } from "~/server/utils/kuma-state";
 
 const { monitors, loading } = useMonitors();
-const { status } = useStatus();
+const { status, lastUpdated } = useStatus();
 
 const topLevelGroups = computed(() => {
     return Object.values(monitors.value)
@@ -78,6 +82,22 @@ function truncate(text: string, max: number): string {
         return text;
     }
     return text.slice(0, max).trimEnd() + "...";
+}
+
+/**
+ * Format a timestamp as a human-readable age
+ * @param ts - timestamp in milliseconds
+ * @returns formatted string like "8s ago" or "2m ago"
+ */
+function formatAge(ts: number): string {
+    const seconds = Math.round((Date.now() - ts) / 1000);
+    if (seconds < 5) {
+        return "just now";
+    }
+    if (seconds < 60) {
+        return `${seconds}s ago`;
+    }
+    return `${Math.floor(seconds / 60)}m ago`;
 }
 </script>
 
@@ -154,6 +174,13 @@ function truncate(text: string, max: number): string {
 .card-meta {
     display: flex;
     gap: 12px;
+    font-size: 12px;
+    color: var(--grey0);
+}
+
+.landing-footer {
+    text-align: center;
+    margin-top: 32px;
     font-size: 12px;
     color: var(--grey0);
 }

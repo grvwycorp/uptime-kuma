@@ -27,6 +27,10 @@
                 {{ getHealthySummary(m.id) }}
             </div>
         </div>
+
+        <div v-if="lastUpdated" class="status-footer">
+            Updated {{ lastUpdatedText }}
+        </div>
     </div>
 </template>
 
@@ -37,9 +41,41 @@ import type { MonitorStatus as MonitorStatusType, ProbeStatus } from "~/server/u
 const props = defineProps<{
     monitors: MonitorData[];
     status: Record<string, MonitorStatusType>;
+    lastUpdated: number;
 }>();
 
 const expanded = ref<Record<number, boolean>>({});
+
+// Reactive timer for smooth "Updated Xs ago" display
+const now = ref(Date.now());
+let tickInterval: ReturnType<typeof setInterval> | undefined;
+
+onMounted(() => {
+    tickInterval = setInterval(() => {
+        now.value = Date.now();
+    }, 5000);
+});
+
+onUnmounted(() => {
+    if (tickInterval) {
+        clearInterval(tickInterval);
+    }
+});
+
+const lastUpdatedText = computed(() => {
+    if (!props.lastUpdated) {
+        return "";
+    }
+    const seconds = Math.round((now.value - props.lastUpdated) / 1000);
+    if (seconds < 5) {
+        return "just now";
+    }
+    if (seconds < 60) {
+        return `${seconds}s ago`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ago`;
+});
 
 /**
  * Toggle the per-probe drill-down for a monitor
@@ -179,5 +215,14 @@ function getHealthySummary(id: number): string {
     padding: 2px 16px 8px 52px;
     font-size: 11px;
     color: var(--grey0);
+}
+
+.status-footer {
+    padding: 8px 16px;
+    font-size: 11px;
+    color: var(--grey0);
+    text-align: right;
+    border-top: 1px solid var(--bg2);
+    margin-top: auto;
 }
 </style>

@@ -8,7 +8,10 @@ import { fetchMonitorStatus } from "../utils/prom-client";
 export default defineEventHandler(async () => {
     const config = useRuntimeConfig();
     const promUrl = config.otelPromUrl as string;
-    const status = await fetchMonitorStatus(promUrl);
+    const result = await fetchMonitorStatus(promUrl);
 
-    return { status };
+    return {
+        status: result.status,
+        lastUpdated: result.lastUpdated,
+    };
 });

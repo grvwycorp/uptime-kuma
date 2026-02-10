@@ -25,6 +25,7 @@
             <MonitorStatus
                 :monitors="rightPanelMonitors"
                 :status="status"
+                :last-updated="lastUpdated"
             />
         </aside>
     </div>
@@ -37,7 +38,7 @@ const route = useRoute();
 const router = useRouter();
 const { monitors, loading } = useMonitors();
 const { tree, isCollapsed } = useMonitorTree(monitors);
-const { status } = useStatus();
+const { status, lastUpdated } = useStatus();
 
 // Selected monitor ID from route
 const selectedId = computed<number | null>(() => {
