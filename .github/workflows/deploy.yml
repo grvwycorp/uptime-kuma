@@ -56,16 +56,7 @@ jobs:
           echo "${{ secrets.DB_PASSWORD }}" > deploy/master/secrets/db_password.txt
           chmod 600 deploy/master/secrets/*.txt
 
-      - name: Build Iris image
-        working-directory: deploy/master
-        run: |
-          BUILD_ARGS=""
-          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
-            BUILD_ARGS="--no-cache"
-          fi
-          docker compose -p iris build $BUILD_ARGS
-
-      - name: Deploy master services
+      - name: Build and deploy master services
         working-directory: deploy/master
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -80,7 +71,12 @@ jobs:
           CATALOG_USER: ${{ secrets.CATALOG_USER }}
           CATALOG_PASSWORD: ${{ secrets.CATALOG_PASSWORD }}
         run: |
-          docker compose -p iris up -d --remove-orphans
+          BUILD_ARGS=""
+          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
+            BUILD_ARGS="--no-cache"
+          fi
+          docker compose -p iris build $BUILD_ARGS
+          docker compose -p iris up -d --force-recreate --remove-orphans
           # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
           docker compose -p iris restart iris-otel || true
           sleep 5
@@ -167,16 +163,7 @@ jobs:
           echo "hostname=${PROBE_HOSTNAME}" >> $GITHUB_OUTPUT
           echo "Deploying probe: ${PROBE_HOSTNAME}"
 
-      - name: Build Iris probe image
-        working-directory: deploy/probe
-        run: |
-          BUILD_ARGS=""
-          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
-            BUILD_ARGS="--no-cache"
-          fi
-          docker compose -p iris build $BUILD_ARGS
-
-      - name: Deploy probe
+      - name: Build and deploy probe
         working-directory: deploy/probe
         env:
           HOSTNAME: ${{ steps.identity.outputs.hostname }}
@@ -184,7 +171,12 @@ jobs:
           IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
           IRIS_MASTER_IP: ${{ secrets.IRIS_MASTER_IP }}
         run: |
-          docker compose -p iris up -d --remove-orphans
+          BUILD_ARGS=""
+          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
+            BUILD_ARGS="--no-cache"
+          fi
+          docker compose -p iris build $BUILD_ARGS
+          docker compose -p iris up -d --force-recreate --remove-orphans
           sleep 5
           docker compose -p iris ps
 
