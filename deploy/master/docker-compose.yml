@@ -131,12 +131,13 @@ services:
     container_name: iris-catalog
     restart: unless-stopped
     environment:
-      KUMA_URL: http://iris-web:3001
-      KUMA_USERNAME: ${IRIS_MASTER_USER:-admin}
-      KUMA_PASSWORD: ${IRIS_MASTER_PASSWORD}
-      OTEL_PROM_URL: http://iris-otel:8889/metrics
-      AUTH_USERNAME: ${CATALOG_USER:-admin}
-      AUTH_PASSWORD: ${CATALOG_PASSWORD:-}
+      # Nuxt 3 runtimeConfig requires NUXT_ prefix for runtime override
+      NUXT_KUMA_URL: http://iris-web:3001
+      NUXT_KUMA_USERNAME: ${IRIS_MASTER_USER:-admin}
+      NUXT_KUMA_PASSWORD: ${IRIS_MASTER_PASSWORD}
+      NUXT_OTEL_PROM_URL: http://iris-otel:8889/metrics
+      NUXT_AUTH_USERNAME: ${CATALOG_USER:-admin}
+      NUXT_AUTH_PASSWORD: ${CATALOG_PASSWORD:-}
     ports:
       - "3002:3000"
     depends_on:
