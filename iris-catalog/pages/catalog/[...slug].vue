@@ -37,7 +37,6 @@ import type { MonitorData } from "~/server/utils/kuma-state";
 const route = useRoute();
 const router = useRouter();
 const { monitors, loading } = useMonitors();
-const { tree, isCollapsed } = useMonitorTree(monitors);
 const { status, lastUpdated } = useStatus();
 
 // Selected monitor ID from route
@@ -49,6 +48,9 @@ const selectedId = computed<number | null>(() => {
     }
     return null;
 });
+
+// Pass selectedId so the tree auto-expands only the focused service path
+const { tree, isCollapsed } = useMonitorTree(monitors, selectedId);
 
 // The currently selected monitor data
 const selectedMonitor = computed<MonitorData | null>(() => {

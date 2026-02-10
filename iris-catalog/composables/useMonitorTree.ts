@@ -1,6 +1,9 @@
 /**
  * Composable: builds a collapsible tree structure from a flat monitor list.
  * Groups (type="group") become tree nodes, other monitors are leaves.
+ *
+ * All groups default to collapsed. When a selectedId is provided,
+ * only the ancestor path to that monitor is auto-expanded.
  */
 import type { MonitorData } from "~/server/utils/kuma-state";
 
@@ -52,25 +55,72 @@ function buildTree(monitors: Record<string, MonitorData>): TreeNode[] {
     return roots;
 }
 
-export function useMonitorTree(monitors: Ref<Record<string, MonitorData>>) {
-    const tree = computed(() => buildTree(monitors.value));
-    const collapsed = useState<Record<number, boolean>>("tree-collapsed", () => ({}));
+/**
+ * Walk up the parent chain and collect all group ancestor IDs.
+ * If the selected monitor is itself a group, it is included.
+ * @param id - selected monitor ID
+ * @param monitors - flat monitor map
+ * @returns array of group IDs in the ancestor path
+ */
+function getAncestorGroupIds(id: number, monitors: Record<string, MonitorData>): number[] {
+    const groupIds: number[] = [];
+    let current = monitors[String(id)];
 
-    /**
-     * Toggle collapse state for a tree node
-     * @param id - monitor ID to toggle
-     */
-    function toggle(id: number) {
-        collapsed.value = { ...collapsed.value, [id]: !collapsed.value[id] };
+    // If the selected item is a group, expand it
+    if (current?.type === "group") {
+        groupIds.push(current.id);
+    }
+
+    // Walk up the parent chain
+    while (current?.parent) {
+        current = monitors[String(current.parent)];
+        if (current?.type === "group") {
+            groupIds.push(current.id);
+        }
+    }
+
+    return groupIds;
+}
+
+/**
+ * @param monitors - reactive flat monitor map
+ * @param selectedId - optional reactive selected monitor ID; when provided,
+ *   auto-expands the ancestor path and collapses everything else on change
+ */
+export function useMonitorTree(monitors: Ref<Record<string, MonitorData>>, selectedId?: Ref<number | null>) {
+    const tree = computed(() => buildTree(monitors.value));
+    const expanded = useState<Record<number, boolean>>("tree-expanded", () => ({}));
+
+    // When selectedId changes, auto-expand only the ancestor path
+    if (selectedId) {
+        watch(selectedId, (id) => {
+            if (!id) {
+                return;
+            }
+            const ancestors = getAncestorGroupIds(id, monitors.value);
+            const newExpanded: Record<number, boolean> = {};
+            for (const gid of ancestors) {
+                newExpanded[gid] = true;
+            }
+            expanded.value = newExpanded;
+        }, { immediate: true });
     }
 
     /**
-     * Check if a node is collapsed
+     * Toggle expand/collapse state for a tree node
+     * @param id - monitor ID to toggle
+     */
+    function toggle(id: number) {
+        expanded.value = { ...expanded.value, [id]: !expanded.value[id] };
+    }
+
+    /**
+     * Check if a node is collapsed (default: collapsed)
      * @param id - monitor ID
      * @returns true if collapsed
      */
     function isCollapsed(id: number): boolean {
-        return !!collapsed.value[id];
+        return !expanded.value[id];
     }
 
     return { tree, toggle, isCollapsed };
