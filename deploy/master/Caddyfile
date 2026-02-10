@@ -1,0 +1,3 @@
+iris.maol.se {
+	reverse_proxy iris-catalog:3000
+}

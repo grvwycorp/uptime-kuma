@@ -146,6 +146,23 @@ services:
     networks:
       - iris-network
 
+  iris-caddy:
+    image: caddy:2-alpine
+    container_name: iris-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - iris-caddy-data:/data
+      - iris-caddy-config:/config
+    depends_on:
+      - iris-catalog
+    networks:
+      - iris-network
+
 secrets:
   db_root_password:
     file: ./secrets/db_root_password.txt
@@ -156,6 +173,8 @@ volumes:
   iris-web-data:
   iris-db-data:
   iris-sync-data:
+  iris-caddy-data:
+  iris-caddy-config:
 
 networks:
   iris-network:
