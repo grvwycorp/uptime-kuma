@@ -1,0 +1,77 @@
+/*
+ * Everforest Dark Medium — CSS Custom Properties
+ * Based on https://github.com/sainnhe/everforest
+ */
+
+:root {
+    /* Backgrounds (darkest → lightest) */
+    --bg-dim: #232A2E;
+    --bg0: #2D353B;
+    --bg1: #343F44;
+    --bg2: #3D484D;
+    --bg3: #475258;
+    --bg4: #4F585E;
+    --bg5: #56635F;
+
+    /* Foreground */
+    --fg: #D3C6AA;
+
+    /* Greys */
+    --grey0: #7A8478;
+    --grey1: #859289;
+    --grey2: #9DA9A0;
+
+    /* Accent colors */
+    --red: #E67E80;
+    --orange: #E69875;
+    --yellow: #DBBC7F;
+    --green: #A7C080;
+    --aqua: #83C092;
+    --blue: #7FBBB3;
+    --purple: #D699B6;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+}
+
+html,
+body {
+    background: var(--bg-dim);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    color: var(--green);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--aqua);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg0);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg3);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--bg4);
+}

@@ -102,37 +102,39 @@ const contentPath = computed(() => {
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #9ca3af;
+    color: var(--grey1);
     text-align: center;
 }
 
 .empty-state h2 {
     font-size: 20px;
     margin-bottom: 8px;
-    color: #6b7280;
+    color: var(--grey0);
 }
 
 .doc-header {
     margin-bottom: 24px;
     padding-bottom: 16px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--bg2);
 }
 
 .doc-header h1 {
     font-size: 24px;
     font-weight: 700;
     margin: 0 0 8px;
+    color: var(--fg);
 }
 
 .doc-meta {
     display: flex;
     gap: 12px;
     font-size: 13px;
-    color: #6b7280;
+    color: var(--grey1);
 }
 
 .meta-type {
-    background: #f3f4f6;
+    background: var(--bg2);
+    color: var(--aqua);
     padding: 2px 8px;
     border-radius: 4px;
     font-family: monospace;
@@ -160,6 +162,7 @@ const contentPath = computed(() => {
 .doc-body {
     line-height: 1.7;
     font-size: 15px;
+    color: var(--fg);
 }
 
 .doc-body :deep(h1),
@@ -167,25 +170,33 @@ const contentPath = computed(() => {
 .doc-body :deep(h3) {
     margin-top: 1.5em;
     margin-bottom: 0.5em;
+    color: var(--fg);
 }
 
 .doc-body :deep(code) {
-    background: #f3f4f6;
+    background: var(--bg2);
+    color: var(--orange);
     padding: 1px 4px;
     border-radius: 3px;
     font-size: 13px;
 }
 
 .doc-body :deep(pre) {
-    background: #1f2937;
-    color: #e5e7eb;
+    background: var(--bg0);
+    color: var(--fg);
     padding: 16px;
     border-radius: 8px;
     overflow-x: auto;
 }
 
+.doc-body :deep(pre) :deep(code) {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+}
+
 .no-docs {
-    color: #9ca3af;
+    color: var(--grey1);
     font-style: italic;
     margin-bottom: 16px;
 }
@@ -198,18 +209,18 @@ const contentPath = computed(() => {
 
 .config-table td {
     padding: 6px 12px;
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid var(--bg2);
 }
 
 .config-table td:first-child {
     font-weight: 600;
     width: 120px;
-    color: #6b7280;
+    color: var(--grey1);
 }
 
 .doc-extended {
     margin-top: 32px;
     padding-top: 24px;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--bg2);
 }
 </style>

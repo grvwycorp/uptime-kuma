@@ -49,12 +49,12 @@ const { toggle } = useMonitorTree(useState("monitors", () => ({})));
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #6b7280;
+    color: var(--grey0);
 }
 
 .tree-loading, .tree-empty {
     padding: 16px;
-    color: #9ca3af;
+    color: var(--grey1);
     font-size: 13px;
 }
 </style>

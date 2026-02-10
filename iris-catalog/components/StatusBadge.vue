@@ -40,15 +40,15 @@ const label = computed(() => {
     border-radius: 50%;
 }
 
-.up { color: #10b981; }
-.up .dot { background: #10b981; }
+.up { color: var(--green); }
+.up .dot { background: var(--green); }
 
-.down { color: #ef4444; }
-.down .dot { background: #ef4444; }
+.down { color: var(--red); }
+.down .dot { background: var(--red); }
 
-.degraded { color: #f59e0b; }
-.degraded .dot { background: #f59e0b; }
+.degraded { color: var(--yellow); }
+.degraded .dot { background: var(--yellow); }
 
-.unknown { color: #6b7280; }
-.unknown .dot { background: #6b7280; }
+.unknown { color: var(--grey0); }
+.unknown .dot { background: var(--grey0); }
 </style>

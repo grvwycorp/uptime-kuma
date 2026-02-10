@@ -74,12 +74,12 @@ const monitorStatus = computed(() => {
 }
 
 .tree-item:hover {
-    background: #f3f4f6;
+    background: var(--bg1);
 }
 
 .tree-item.selected {
-    background: #eff6ff;
-    border-left-color: #3b82f6;
+    background: var(--bg3);
+    border-left-color: var(--green);
 }
 
 .tree-item.group .node-name {
@@ -93,7 +93,7 @@ const monitorStatus = computed(() => {
     cursor: pointer;
     width: 16px;
     font-size: 9px;
-    color: #9ca3af;
+    color: var(--grey0);
     flex-shrink: 0;
 }
 
@@ -120,6 +120,7 @@ const monitorStatus = computed(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--fg);
 }
 
 .node-status {

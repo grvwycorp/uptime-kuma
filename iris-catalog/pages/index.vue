@@ -97,16 +97,17 @@ function truncate(text: string, max: number): string {
     font-size: 32px;
     font-weight: 800;
     margin: 0 0 8px;
+    color: var(--fg);
 }
 
 .landing-header p {
-    color: #6b7280;
+    color: var(--grey1);
     font-size: 16px;
 }
 
 .landing-loading, .landing-empty {
     text-align: center;
-    color: #9ca3af;
+    color: var(--grey1);
     padding: 48px;
 }
 
@@ -119,16 +120,17 @@ function truncate(text: string, max: number): string {
 .service-card {
     display: block;
     padding: 20px;
-    border: 1px solid #e5e7eb;
+    background: var(--bg1);
+    border: 1px solid var(--bg2);
     border-radius: 12px;
     text-decoration: none;
-    color: inherit;
+    color: var(--fg);
     transition: box-shadow 0.15s, border-color 0.15s;
 }
 
 .service-card:hover {
-    border-color: #3b82f6;
-    box-shadow: 0 2px 12px rgba(59, 130, 246, 0.1);
+    border-color: var(--green);
+    box-shadow: 0 2px 12px rgba(167, 192, 128, 0.12);
 }
 
 .card-status {
@@ -139,11 +141,12 @@ function truncate(text: string, max: number): string {
     font-size: 18px;
     font-weight: 700;
     margin: 0 0 6px;
+    color: var(--fg);
 }
 
 .card-desc {
     font-size: 13px;
-    color: #6b7280;
+    color: var(--grey1);
     margin: 0 0 12px;
     line-height: 1.5;
 }
@@ -152,6 +155,6 @@ function truncate(text: string, max: number): string {
     display: flex;
     gap: 12px;
     font-size: 12px;
-    color: #9ca3af;
+    color: var(--grey0);
 }
 </style>

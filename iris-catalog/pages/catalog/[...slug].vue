@@ -110,32 +110,33 @@ function selectMonitor(id: number) {
 }
 
 .panel-left {
-    border-right: 1px solid #e5e7eb;
-    background: #fafafa;
+    border-right: 1px solid var(--bg2);
+    background: var(--bg0);
 }
 
 .panel-center {
     overflow-y: auto;
+    background: var(--bg-dim);
 }
 
 .panel-right {
-    border-left: 1px solid #e5e7eb;
-    background: #fafafa;
+    border-left: 1px solid var(--bg2);
+    background: var(--bg0);
 }
 
 .panel-top {
     padding: 12px 16px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--bg2);
 }
 
 .back-link {
     font-size: 13px;
-    color: #6b7280;
+    color: var(--grey1);
     text-decoration: none;
 }
 
 .back-link:hover {
-    color: #3b82f6;
+    color: var(--green);
 }
 
 /* Responsive: collapse to single column on small screens */

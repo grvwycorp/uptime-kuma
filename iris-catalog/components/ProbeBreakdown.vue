@@ -38,21 +38,22 @@ defineProps<{
     gap: 8px;
     padding: 4px 8px;
     border-radius: 4px;
-    background: var(--bg-secondary, #f8f9fa);
+    background: var(--bg1);
 }
 
 .probe-name {
     flex: 1;
     font-weight: 500;
+    color: var(--fg);
 }
 
 .probe-rt {
-    color: #6b7280;
+    color: var(--grey1);
     font-variant-numeric: tabular-nums;
 }
 
 .empty {
-    color: #9ca3af;
+    color: var(--grey1);
     font-style: italic;
     padding: 8px;
 }

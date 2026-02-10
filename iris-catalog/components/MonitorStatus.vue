@@ -124,17 +124,17 @@ function getHealthySummary(id: number): string {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #6b7280;
+    color: var(--grey0);
 }
 
 .status-empty {
     padding: 16px;
-    color: #9ca3af;
+    color: var(--grey1);
     font-size: 13px;
 }
 
 .monitor-row {
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid var(--bg2);
 }
 
 .monitor-main {
@@ -147,12 +147,13 @@ function getHealthySummary(id: number): string {
 }
 
 .monitor-main:hover {
-    background: #f9fafb;
+    background: var(--bg1);
 }
 
 .monitor-name {
     flex: 1;
     font-size: 13px;
+    color: var(--fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -160,13 +161,13 @@ function getHealthySummary(id: number): string {
 
 .monitor-rt {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--grey1);
     font-variant-numeric: tabular-nums;
 }
 
 .expand-icon {
     font-size: 9px;
-    color: #9ca3af;
+    color: var(--grey0);
     transition: transform 0.15s;
 }
 
@@ -177,6 +178,6 @@ function getHealthySummary(id: number): string {
 .probe-summary {
     padding: 2px 16px 8px 52px;
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--grey0);
 }
 </style>
