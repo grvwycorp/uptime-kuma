@@ -186,10 +186,9 @@ type Monitor struct {
 }
 
 // monitorHashData contains only the fields used for hash computation.
-// Excludes ID since that's probe-specific.
+// Excludes ID (probe-specific) and Description (documentation-only, no effect on checks).
 type monitorHashData struct {
 	Name                             string  `json:"name"`
-	Description                      *string `json:"description,omitempty"`
 	Type                             string  `json:"type"`
 	Subtype                          *string `json:"subtype,omitempty"`
 	Active                           int     `json:"active"`
@@ -309,7 +308,6 @@ func nullInt64Ptr(ni sql.NullInt64) *int64 {
 func (m *Monitor) ComputeHash() string {
 	data := monitorHashData{
 		Name:                             m.Name,
-		Description:                      nullStringPtr(m.Description),
 		Type:                             m.Type,
 		Subtype:                          nullStringPtr(m.Subtype),
 		Active:                           m.Active,
