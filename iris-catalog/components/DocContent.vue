@@ -41,10 +41,12 @@
                 class="doc-body"
                 v-html="renderedDescription"
             ></div>
-
-            <!-- Fallback: auto-generated summary -->
             <div v-else class="doc-body doc-fallback">
                 <p class="no-docs">No documentation yet for this monitor.</p>
+            </div>
+
+            <!-- Monitor configuration (always shown) -->
+            <div class="doc-config">
                 <h3>Monitor Configuration</h3>
                 <table class="config-table">
                     <tr v-if="monitor.url"><td>URL</td><td>{{ monitor.url }}</td></tr>
@@ -271,6 +273,19 @@ const contentPath = computed(() => {
     font-weight: 600;
     width: 120px;
     color: var(--grey1);
+}
+
+.doc-config {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--bg2);
+}
+
+.doc-config h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--grey1);
+    margin-bottom: 8px;
 }
 
 .doc-extended {
