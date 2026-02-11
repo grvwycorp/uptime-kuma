@@ -2,7 +2,7 @@
     <div class="tree-node">
         <div
             class="tree-item"
-            :class="{ selected: selectedId === node.monitor.id, group: isGroup }"
+            :class="{ selected: selectedId === node.monitor.id, focused: focusedId === node.monitor.id, group: isGroup }"
             :style="{ paddingLeft: (depth * 16 + 16) + 'px' }"
             @click="$emit('select', node.monitor.id)"
         >
@@ -21,19 +21,22 @@
                 class="node-status"
             />
         </div>
-        <div v-if="isGroup && !isCollapsed(node.monitor.id)">
-            <TreeNodeItem
-                v-for="child in node.children"
-                :key="child.monitor.id"
-                :node="child"
-                :depth="depth + 1"
-                :selected-id="selectedId"
-                :status="status"
-                :is-collapsed="isCollapsed"
-                @select="(id: number) => $emit('select', id)"
-                @toggle="(id: number) => $emit('toggle', id)"
-            />
-        </div>
+        <Transition name="tree-expand">
+            <div v-if="isGroup && !isCollapsed(node.monitor.id)" class="tree-children">
+                <TreeNodeItem
+                    v-for="child in node.children"
+                    :key="child.monitor.id"
+                    :node="child"
+                    :depth="depth + 1"
+                    :selected-id="selectedId"
+                    :focused-id="focusedId"
+                    :status="status"
+                    :is-collapsed="isCollapsed"
+                    @select="(id: number) => $emit('select', id)"
+                    @toggle="(id: number) => $emit('toggle', id)"
+                />
+            </div>
+        </Transition>
     </div>
 </template>
 
@@ -45,6 +48,7 @@ const props = defineProps<{
     node: TreeNode;
     depth: number;
     selectedId: number | null;
+    focusedId: number | null;
     status: Record<string, MonitorStatus>;
     isCollapsed: (id: number) => boolean;
 }>();
@@ -80,6 +84,10 @@ const monitorStatus = computed(() => {
 .tree-item.selected {
     background: var(--bg3);
     border-left-color: var(--green);
+}
+
+.tree-item.focused {
+    box-shadow: inset 0 0 0 1px var(--blue);
 }
 
 .tree-item.group .node-name {
@@ -125,5 +133,21 @@ const monitorStatus = computed(() => {
 
 .node-status {
     flex-shrink: 0;
+}
+
+.tree-children {
+    overflow: hidden;
+}
+
+.tree-expand-enter-active,
+.tree-expand-leave-active {
+    transition: max-height 0.2s ease, opacity 0.2s ease;
+    max-height: 2000px;
+}
+
+.tree-expand-enter-from,
+.tree-expand-leave-to {
+    max-height: 0;
+    opacity: 0;
 }
 </style>

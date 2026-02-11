@@ -7,6 +7,17 @@
 
         <template v-else>
             <div class="doc-header">
+                <nav v-if="breadcrumbs.length > 1" class="breadcrumbs">
+                    <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
+                        <span v-if="i > 0" class="breadcrumb-sep">/</span>
+                        <NuxtLink
+                            v-if="i < breadcrumbs.length - 1"
+                            :to="`/catalog/${crumb.id}`"
+                            class="breadcrumb-link"
+                        >{{ crumb.name }}</NuxtLink>
+                        <span v-else class="breadcrumb-current">{{ crumb.name }}</span>
+                    </template>
+                </nav>
                 <h1>{{ monitor.name }}</h1>
                 <div class="doc-meta">
                     <span class="meta-type">{{ monitor.type }}</span>
@@ -67,6 +78,7 @@ import type { MonitorData } from "~/server/utils/kuma-state";
 
 const props = defineProps<{
     monitor: MonitorData | null;
+    monitors?: Record<string, MonitorData>;
 }>();
 
 const renderedDescription = computed(() => {
@@ -74,6 +86,23 @@ const renderedDescription = computed(() => {
         return "";
     }
     return marked.parse(props.monitor.description);
+});
+
+/**
+ * Build breadcrumb chain from current monitor up to the root
+ * @returns array of { id, name } from root to current
+ */
+const breadcrumbs = computed(() => {
+    if (!props.monitor || !props.monitors) {
+        return [];
+    }
+    const chain: Array<{ id: number; name: string }> = [];
+    let current: MonitorData | undefined = props.monitor;
+    while (current) {
+        chain.unshift({ id: current.id, name: current.name });
+        current = current.parent ? props.monitors[String(current.parent)] : undefined;
+    }
+    return chain;
 });
 
 // Try to find matching Nuxt Content page by monitor name (slugified)
@@ -109,6 +138,32 @@ const contentPath = computed(() => {
 .empty-state h2 {
     font-size: 20px;
     margin-bottom: 8px;
+    color: var(--grey0);
+}
+
+.breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.breadcrumb-sep {
+    color: var(--grey0);
+}
+
+.breadcrumb-link {
+    color: var(--grey1);
+    text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+    color: var(--green);
+}
+
+.breadcrumb-current {
     color: var(--grey0);
 }
 

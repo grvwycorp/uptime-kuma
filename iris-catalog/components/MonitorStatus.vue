@@ -9,7 +9,20 @@
         <div v-for="m in monitors" :key="m.id" class="monitor-row">
             <div class="monitor-main" @click="toggleExpand(m.id)">
                 <StatusBadge :status="getAggregated(m.id)" />
-                <span class="monitor-name">{{ m.name }}</span>
+                <div class="monitor-info">
+                    <span class="monitor-name">{{ m.name }}</span>
+                    <span
+                        v-if="getEndpoint(m)"
+                        class="monitor-endpoint"
+                        @click.stop="copyEndpoint(getEndpoint(m))"
+                        :title="'Click to copy'"
+                    >
+                        {{ getEndpoint(m) }}
+                        <span class="copy-icon" :class="{ copied: copiedId === m.id }">
+                            {{ copiedId === m.id ? '&#10003;' : '&#9112;' }}
+                        </span>
+                    </span>
+                </div>
                 <span class="monitor-rt">{{ getResponseTime(m.id) }}</span>
                 <span v-if="hasMultipleProbes(m.id)" class="expand-icon" :class="{ expanded: expanded[m.id] }">
                     &#9654;
@@ -45,6 +58,7 @@ const props = defineProps<{
 }>();
 
 const expanded = ref<Record<number, boolean>>({});
+const copiedId = ref<number | null>(null);
 
 // Reactive timer for smooth "Updated Xs ago" display
 const now = ref(Date.now());
@@ -78,6 +92,39 @@ const lastUpdatedText = computed(() => {
 });
 
 /**
+ * Copy endpoint text to clipboard and show brief confirmation
+ * @param text - text to copy
+ */
+async function copyEndpoint(text: string) {
+    try {
+        await navigator.clipboard.writeText(text);
+        // Find the monitor ID matching this endpoint for visual feedback
+        const m = props.monitors.find(mon => getEndpoint(mon) === text);
+        if (m) {
+            copiedId.value = m.id;
+            setTimeout(() => { copiedId.value = null; }, 1500);
+        }
+    } catch {
+        // Clipboard API not available (e.g., HTTP without secure context)
+    }
+}
+
+/**
+ * Get the endpoint URL or hostname:port for a monitor
+ * @param m - monitor data
+ * @returns endpoint string or empty
+ */
+function getEndpoint(m: MonitorData): string {
+    if (m.url) {
+        return m.url;
+    }
+    if (m.hostname) {
+        return m.port ? `${m.hostname}:${m.port}` : m.hostname;
+    }
+    return "";
+}
+
+/**
  * Toggle the per-probe drill-down for a monitor
  * @param id - monitor ID
  */
@@ -95,6 +142,18 @@ function getAggregated(id: number): "up" | "down" | "degraded" | "unknown" {
 }
 
 /**
+ * Format milliseconds for display: "42ms" or "1.2s"
+ * @param ms - value in milliseconds
+ * @returns formatted string
+ */
+function formatMs(ms: number): string {
+    if (ms >= 1000) {
+        return `${(ms / 1000).toFixed(1)}s`;
+    }
+    return `${Math.round(ms)}ms`;
+}
+
+/**
  * Get formatted response time (average across probes)
  * @param id - monitor ID
  * @returns formatted string like "12ms" or "—"
@@ -109,7 +168,7 @@ function getResponseTime(id: number): string {
         return "—";
     }
     const avg = Math.round(values.reduce((sum, p) => sum + p.responseTime, 0) / values.length);
-    return `${avg}ms`;
+    return formatMs(avg);
 }
 
 /**
@@ -186,13 +245,50 @@ function getHealthySummary(id: number): string {
     background: var(--bg1);
 }
 
-.monitor-name {
+.monitor-info {
     flex: 1;
+    min-width: 0;
+}
+
+.monitor-name {
+    display: block;
     font-size: 13px;
     color: var(--fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.monitor-endpoint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--grey0);
+    font-family: monospace;
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.monitor-endpoint:hover {
+    color: var(--grey1);
+}
+
+.copy-icon {
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+
+.monitor-endpoint:hover .copy-icon {
+    opacity: 0.6;
+}
+
+.copy-icon.copied {
+    opacity: 1;
+    color: var(--green);
 }
 
 .monitor-rt {

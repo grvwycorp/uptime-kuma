@@ -5,7 +5,15 @@
             <p>Service documentation and live monitoring reference</p>
         </header>
 
-        <div v-if="loading" class="landing-loading">Loading monitors...</div>
+        <div v-if="loading" class="service-grid">
+            <div v-for="i in 4" :key="i" class="skeleton-card">
+                <div class="skeleton" style="width: 60px; height: 14px; margin-bottom: 12px;"></div>
+                <div class="skeleton" style="width: 70%; height: 18px; margin-bottom: 8px;"></div>
+                <div class="skeleton" style="width: 90%; height: 12px; margin-bottom: 6px;"></div>
+                <div class="skeleton" style="width: 50%; height: 12px; margin-bottom: 12px;"></div>
+                <div class="skeleton" style="width: 100%; height: 4px;"></div>
+            </div>
+        </div>
 
         <div v-else class="service-grid">
             <NuxtLink
@@ -26,6 +34,28 @@
                     <span v-if="group.tags?.length">
                         {{ group.tags.map((t: any) => t.name).join(', ') }}
                     </span>
+                </div>
+                <div class="status-bar" v-if="getStatusBreakdown(group.id).total > 0">
+                    <div
+                        v-if="getStatusBreakdown(group.id).up > 0"
+                        class="bar-segment bar-up"
+                        :style="{ flex: getStatusBreakdown(group.id).up }"
+                    ></div>
+                    <div
+                        v-if="getStatusBreakdown(group.id).degraded > 0"
+                        class="bar-segment bar-degraded"
+                        :style="{ flex: getStatusBreakdown(group.id).degraded }"
+                    ></div>
+                    <div
+                        v-if="getStatusBreakdown(group.id).down > 0"
+                        class="bar-segment bar-down"
+                        :style="{ flex: getStatusBreakdown(group.id).down }"
+                    ></div>
+                    <div
+                        v-if="getStatusBreakdown(group.id).unknown > 0"
+                        class="bar-segment bar-unknown"
+                        :style="{ flex: getStatusBreakdown(group.id).unknown }"
+                    ></div>
                 </div>
             </NuxtLink>
         </div>
@@ -69,6 +99,25 @@ function getAggregated(id: number): "up" | "down" | "degraded" | "unknown" {
 function getChildCount(id: number): number {
     const m = monitors.value[String(id)];
     return m?.childrenIDs?.length ?? 0;
+}
+
+/**
+ * Get status breakdown counts for a group's children
+ * @param id - group monitor ID
+ * @returns counts of up/down/degraded/unknown children
+ */
+function getStatusBreakdown(id: number): { up: number; down: number; degraded: number; unknown: number; total: number } {
+    const m = monitors.value[String(id)];
+    const childIds = m?.childrenIDs ?? [];
+    let up = 0, down = 0, degraded = 0, unknown = 0;
+    for (const cid of childIds) {
+        const s = status.value[String(cid)]?.aggregated || "unknown";
+        if (s === "up") { up++; }
+        else if (s === "down") { down++; }
+        else if (s === "degraded") { degraded++; }
+        else { unknown++; }
+    }
+    return { up, down, degraded, unknown, total: childIds.length };
 }
 
 /**
@@ -125,10 +174,17 @@ function formatAge(ts: number): string {
     font-size: 16px;
 }
 
-.landing-loading, .landing-empty {
+.landing-empty {
     text-align: center;
     color: var(--grey1);
     padding: 48px;
+}
+
+.skeleton-card {
+    padding: 20px;
+    background: var(--bg1);
+    border: 1px solid var(--bg2);
+    border-radius: 12px;
 }
 
 .service-grid {
@@ -177,6 +233,24 @@ function formatAge(ts: number): string {
     font-size: 12px;
     color: var(--grey0);
 }
+
+.status-bar {
+    display: flex;
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 12px;
+    gap: 1px;
+}
+
+.bar-segment {
+    min-width: 3px;
+}
+
+.bar-up { background: var(--green); }
+.bar-degraded { background: var(--yellow); }
+.bar-down { background: var(--red); }
+.bar-unknown { background: var(--bg4); }
 
 .landing-footer {
     text-align: center;

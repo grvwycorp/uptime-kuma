@@ -83,13 +83,99 @@ function getAncestorGroupIds(id: number, monitors: Record<string, MonitorData>):
 }
 
 /**
+ * Filter a tree to only include nodes matching the query (and their ancestors).
+ * Returns a deep-cloned subtree so the original is not mutated.
+ * @param nodes - tree nodes to filter
+ * @param query - lowercase search string
+ * @returns filtered tree (or original if query is empty)
+ */
+function filterTree(nodes: TreeNode[], query: string): TreeNode[] {
+    if (!query) {
+        return nodes;
+    }
+    const result: TreeNode[] = [];
+    for (const node of nodes) {
+        const nameMatch = node.monitor.name.toLowerCase().includes(query);
+        const filteredChildren = filterTree(node.children, query);
+        if (nameMatch || filteredChildren.length > 0) {
+            result.push({
+                monitor: node.monitor,
+                children: filteredChildren,
+            });
+        }
+    }
+    return result;
+}
+
+/**
+ * Collect all group IDs from a tree (used to auto-expand during search)
+ * @param nodes - tree nodes to scan
+ * @returns set of group IDs
+ */
+function collectGroupIds(nodes: TreeNode[]): Set<number> {
+    const ids = new Set<number>();
+    for (const node of nodes) {
+        if (node.monitor.type === "group") {
+            ids.add(node.monitor.id);
+        }
+        for (const id of collectGroupIds(node.children)) {
+            ids.add(id);
+        }
+    }
+    return ids;
+}
+
+/**
  * @param monitors - reactive flat monitor map
  * @param selectedId - optional reactive selected monitor ID; when provided,
  *   auto-expands the ancestor path and collapses everything else on change
  */
+const STORAGE_KEY = "iris-tree-expanded";
+
 export function useMonitorTree(monitors: Ref<Record<string, MonitorData>>, selectedId?: Ref<number | null>) {
-    const tree = computed(() => buildTree(monitors.value));
-    const expanded = useState<Record<number, boolean>>("tree-expanded", () => ({}));
+    const fullTree = computed(() => buildTree(monitors.value));
+    const searchQuery = useState<string>("tree-search", () => "");
+
+    // Restore from sessionStorage on client
+    const initial: Record<number, boolean> = {};
+    if (import.meta.client) {
+        try {
+            const saved = sessionStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                Object.assign(initial, JSON.parse(saved));
+            }
+        } catch { /* ignore parse errors */ }
+    }
+    const expanded = useState<Record<number, boolean>>("tree-expanded", () => initial);
+
+    // Persist to sessionStorage on change
+    if (import.meta.client) {
+        watch(expanded, (val) => {
+            try {
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(val));
+            } catch { /* storage full or unavailable */ }
+        }, { deep: true });
+    }
+
+    const tree = computed(() => {
+        const q = searchQuery.value.trim().toLowerCase();
+        return filterTree(fullTree.value, q);
+    });
+
+    // When searching, auto-expand all matching groups
+    watch(searchQuery, (q) => {
+        const trimmed = q.trim().toLowerCase();
+        if (!trimmed) {
+            return;
+        }
+        const filtered = filterTree(fullTree.value, trimmed);
+        const groupIds = collectGroupIds(filtered);
+        const newExpanded: Record<number, boolean> = { ...expanded.value };
+        for (const gid of groupIds) {
+            newExpanded[gid] = true;
+        }
+        expanded.value = newExpanded;
+    });
 
     // When selectedId changes, auto-expand only the ancestor path
     if (selectedId) {
@@ -123,5 +209,5 @@ export function useMonitorTree(monitors: Ref<Record<string, MonitorData>>, selec
         return !expanded.value[id];
     }
 
-    return { tree, toggle, isCollapsed };
+    return { tree, toggle, isCollapsed, searchQuery };
 }

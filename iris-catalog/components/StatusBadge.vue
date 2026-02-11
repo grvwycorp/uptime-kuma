@@ -44,10 +44,15 @@ const label = computed(() => {
 .up .dot { background: var(--green); }
 
 .down { color: var(--red); }
-.down .dot { background: var(--red); }
+.down .dot { background: var(--red); animation: pulse 2s ease-in-out infinite; }
 
 .degraded { color: var(--yellow); }
-.degraded .dot { background: var(--yellow); }
+.degraded .dot { background: var(--yellow); animation: pulse 3s ease-in-out infinite; }
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.6; }
+}
 
 .unknown { color: var(--grey0); }
 .unknown .dot { background: var(--grey0); }

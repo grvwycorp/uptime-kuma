@@ -7,7 +7,7 @@
         >
             <StatusBadge :status="probe.up ? 'up' : 'down'" />
             <span class="probe-name">{{ probeId }}</span>
-            <span class="probe-rt">{{ probe.responseTime > 0 ? probe.responseTime + 'ms' : '—' }}</span>
+            <span class="probe-rt">{{ probe.responseTime > 0 ? formatMs(probe.responseTime) : '—' }}</span>
         </div>
     </div>
     <div v-else class="probe-breakdown empty">
@@ -21,6 +21,18 @@ import type { ProbeStatus } from "~/server/utils/prom-client";
 defineProps<{
     probes: Record<string, ProbeStatus> | undefined;
 }>();
+
+/**
+ * Format milliseconds for display: "42ms" or "1.2s"
+ * @param ms - value in milliseconds
+ * @returns formatted string
+ */
+function formatMs(ms: number): string {
+    if (ms >= 1000) {
+        return `${(ms / 1000).toFixed(1)}s`;
+    }
+    return `${Math.round(ms)}ms`;
+}
 </script>
 
 <style scoped>
