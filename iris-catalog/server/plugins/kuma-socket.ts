@@ -10,6 +10,14 @@ let socket: Socket | null = null;
 let token: string | null = null;
 
 /**
+ * Get the shared Socket.IO client instance (used by API routes to emit events)
+ * @returns the socket or null if not connected
+ */
+export function getKumaSocket(): Socket | null {
+    return socket;
+}
+
+/**
  * Login to Uptime Kuma via Socket.IO
  * @param sock - Socket.IO client instance
  * @param username - admin username
