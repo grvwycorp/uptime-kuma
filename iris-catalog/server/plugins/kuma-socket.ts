@@ -4,7 +4,7 @@
  * with monitor configs, descriptions, hierarchy, and tags.
  */
 import { io, Socket } from "socket.io-client";
-import { setMonitors, setConnected } from "../utils/kuma-state";
+import { getMonitors, setMonitors, setConnected } from "../utils/kuma-state";
 
 let socket: Socket | null = null;
 let token: string | null = null;
@@ -103,14 +103,12 @@ export default defineNitroPlugin(() => {
 
     // Incremental updates
     socket.on("updateMonitorIntoList", (data: Record<string, unknown>) => {
-        const { getMonitors } = require("../utils/kuma-state");
         const monitors = { ...getMonitors(), ...data };
         setMonitors(monitors as any);
     });
 
     // Monitor removals
     socket.on("deleteMonitorFromList", (monitorID: string) => {
-        const { getMonitors } = require("../utils/kuma-state");
         const monitors = { ...getMonitors() };
         delete monitors[monitorID];
         setMonitors(monitors);
