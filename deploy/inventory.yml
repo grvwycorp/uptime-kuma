@@ -30,7 +30,7 @@ probes:
     tailscale_name: probe01
     tailscale_ip: 100.97.5.70
     tailscale_fqdn: probe01.tail605657.ts.net
-    location: frankfurt
+    location: Stockholm
 
   - hostname: labbmartin
     description: Lab probe (Martin)
@@ -38,7 +38,7 @@ probes:
     tailscale_name: labbmartin
     tailscale_ip: 100.88.142.75
     tailscale_fqdn: labbmartin.tail605657.ts.net
-    location: unknown
+    location: Karlstad
 
   # Retired – removed from CI/CD deployment
   # - hostname: debian

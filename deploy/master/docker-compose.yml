@@ -146,6 +146,24 @@ services:
     networks:
       - iris-network
 
+  iris-public:
+    build:
+      context: ../../public-frontend
+      dockerfile: Dockerfile
+    container_name: iris-public
+    restart: unless-stopped
+    environment:
+      NUXT_CATALOG_URL: http://iris-catalog:3000
+      NUXT_CATALOG_USERNAME: ${CATALOG_USER:-admin}
+      NUXT_CATALOG_PASSWORD: ${CATALOG_PASSWORD:-}
+      NUXT_PUBLIC_STATUS_POLL_INTERVAL: "15000"
+    ports:
+      - "3003:3000"
+    depends_on:
+      - iris-catalog
+    networks:
+      - iris-network
+
   iris-caddy:
     image: caddy:2-alpine
     container_name: iris-caddy
@@ -160,6 +178,7 @@ services:
       - iris-caddy-config:/config
     depends_on:
       - iris-catalog
+      - iris-public
     networks:
       - iris-network
 

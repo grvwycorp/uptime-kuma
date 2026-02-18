@@ -1,3 +1,7 @@
-iris.maol.se {
+irdoc.maol.se {
 	reverse_proxy iris-catalog:3000
+}
+
+iris.maol.se {
+	reverse_proxy iris-public:3000
 }
