@@ -44,5 +44,11 @@ export default defineNuxtConfig({
         experimental: {
             websocket: true,
         },
+        // Disable prerendering — server plugins (kuma-socket, rate-limiter)
+        // hold the process open during prerender, causing builds to hang.
+        prerender: {
+            crawlLinks: false,
+            routes: [],
+        },
     },
 });
