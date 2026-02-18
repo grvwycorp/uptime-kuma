@@ -6,12 +6,13 @@ RUN npm ci
 COPY . .
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV NUXT_TELEMETRY_DISABLED=1
-RUN npm run build; \
-    EXIT=$?; \
+# nuxt build hangs after completion due to open handles (socket.io, timers).
+# timeout kills the process, then we verify the output was actually produced.
+RUN timeout -s KILL 120 npm run build; \
     if [ -f .output/server/index.mjs ]; then \
-      echo "Build verified"; exit 0; \
+      echo "Build verified OK"; \
     else \
-      echo "Build failed (exit code: $EXIT)"; exit 1; \
+      echo "Build failed — output not produced"; exit 1; \
     fi
 
 FROM node:20-alpine

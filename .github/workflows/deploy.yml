@@ -76,7 +76,10 @@ jobs:
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
             BUILD_ARGS="--no-cache"
           fi
-          docker compose -p iris build $BUILD_ARGS
+          # Build sequentially — parallel builds OOM on 4GB VPS
+          docker compose -p iris build $BUILD_ARGS iris-web
+          docker compose -p iris build $BUILD_ARGS iris-public
+          docker compose -p iris build $BUILD_ARGS iris-sync
           docker compose -p iris up -d --force-recreate --remove-orphans
           # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
           docker compose -p iris restart iris-otel || true
