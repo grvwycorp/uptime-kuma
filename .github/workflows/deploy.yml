@@ -38,7 +38,7 @@ jobs:
       github.event.inputs.target == 'all' ||
       github.event.inputs.target == 'master'
     runs-on: [self-hosted, master]
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     env:
       DEPLOY_DIR: ${{ github.workspace }}
