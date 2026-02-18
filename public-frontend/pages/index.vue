@@ -168,6 +168,10 @@ const overallLabel = computed(() => {
                 Data refreshed
                 <span v-if="data">{{ formatTime(data.generated_at) }}</span>
             </p>
+            <p class="disclaimer">
+                Independent monitoring &mdash; may not reflect actual service status.
+                <NuxtLink to="/legal">Disclaimer &amp; Privacy</NuxtLink>
+            </p>
         </footer>
     </div>
 </template>
@@ -354,6 +358,21 @@ body {
 }
 
 .footer strong {
+    color: var(--text);
+}
+
+.disclaimer {
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.disclaimer a {
+    color: var(--text-muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.disclaimer a:hover {
     color: var(--text);
 }
 </style>
