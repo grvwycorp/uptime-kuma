@@ -31,7 +31,7 @@ exporters:
     headers:
       Authorization: 'Basic ${env:GRAFANA_OTLP_HEADERS}'
 
-  # Local Prometheus exporter for iris-catalog
+  # Local Prometheus exporter for iris-public
   prometheus:
     endpoint: "0.0.0.0:8889"
 

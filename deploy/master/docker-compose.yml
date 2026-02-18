@@ -74,7 +74,7 @@ services:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
       - "8888:8888"   # Prometheus metrics (collector self-metrics)
-      - "8889:8889"   # Prometheus exporter (probe metrics for iris-catalog)
+      - "8889:8889"   # Prometheus exporter (probe metrics for iris-public)
     depends_on:
       - iris-web
     networks:
@@ -124,11 +124,15 @@ services:
       iris-db:
         condition: service_healthy
 
-  iris-catalog:
+  # Consolidated frontend: public status (/) + catalog docs (/docs)
+  # Replaces the old iris-catalog + iris-public proxy pair.
+  # Deploy: docker compose up -d --remove-orphans --build iris-public
+  # This stops old iris-catalog container automatically.
+  iris-public:
     build:
-      context: ../../iris-catalog
+      context: ../../iris-public
       dockerfile: Dockerfile
-    container_name: iris-catalog
+    container_name: iris-public
     restart: unless-stopped
     environment:
       # Nuxt 3 runtimeConfig requires NUXT_ prefix for runtime override
@@ -138,29 +142,12 @@ services:
       NUXT_OTEL_PROM_URL: http://iris-otel:8889/metrics
       NUXT_AUTH_USERNAME: ${CATALOG_USER:-admin}
       NUXT_AUTH_PASSWORD: ${CATALOG_PASSWORD:-}
+      FARO_COLLECTOR_URL: ${FARO_COLLECTOR_URL:-}
     ports:
       - "3002:3000"
     depends_on:
       - iris-web
       - iris-otel
-    networks:
-      - iris-network
-
-  iris-public:
-    build:
-      context: ../../public-frontend
-      dockerfile: Dockerfile
-    container_name: iris-public
-    restart: unless-stopped
-    environment:
-      NUXT_CATALOG_URL: http://iris-catalog:3000
-      NUXT_CATALOG_USERNAME: ${CATALOG_USER:-admin}
-      NUXT_CATALOG_PASSWORD: ${CATALOG_PASSWORD:-}
-      NUXT_PUBLIC_STATUS_POLL_INTERVAL: "15000"
-    ports:
-      - "3003:3000"
-    depends_on:
-      - iris-catalog
     networks:
       - iris-network
 
@@ -177,7 +164,6 @@ services:
       - iris-caddy-data:/data
       - iris-caddy-config:/config
     depends_on:
-      - iris-catalog
       - iris-public
     networks:
       - iris-network

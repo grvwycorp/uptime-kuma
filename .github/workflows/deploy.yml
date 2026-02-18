@@ -70,6 +70,7 @@ jobs:
           # Catalog auth credentials
           CATALOG_USER: ${{ secrets.CATALOG_USER }}
           CATALOG_PASSWORD: ${{ secrets.CATALOG_PASSWORD }}
+          FARO_COLLECTOR_URL: ${{ secrets.FARO_COLLECTOR_URL }}
         run: |
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
@@ -112,19 +113,19 @@ jobs:
             # Don't fail deployment if sync isn't running (probes may not be up yet)
           fi
 
-      - name: Health check (iris-catalog)
+      - name: Health check (iris-public)
         run: |
           for i in {1..30}; do
             if curl -sf http://localhost:3002/api/health > /dev/null; then
-              echo "Iris catalog is healthy"
+              echo "Iris public is healthy"
               exit 0
             fi
-            echo "Waiting for Iris catalog... ($i/30)"
+            echo "Waiting for Iris public... ($i/30)"
             sleep 2
           done
-          echo "Warning: iris-catalog health check failed"
-          docker compose -p iris -f deploy/master/docker-compose.yml logs iris-catalog 2>&1 | tail -30
-          # Don't fail deployment if catalog isn't ready yet
+          echo "Warning: iris-public health check failed"
+          docker compose -p iris -f deploy/master/docker-compose.yml logs iris-public 2>&1 | tail -30
+          # Don't fail deployment if frontend isn't ready yet
 
       - name: Cleanup old images
         run: docker image prune -f
