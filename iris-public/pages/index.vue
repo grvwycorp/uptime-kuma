@@ -34,10 +34,14 @@ onMounted(() => {
     onUnmounted(() => clearInterval(interval));
 });
 
-const expanded = ref<Record<string, boolean>>({});
+const expandedSlug = ref<string | null>(null);
 
 function toggle(slug: string) {
-    expanded.value[slug] = !expanded.value[slug];
+    expandedSlug.value = expandedSlug.value === slug ? null : slug;
+}
+
+function isExpanded(slug: string): boolean {
+    return expandedSlug.value === slug;
 }
 
 function statusColor(status: string): string {
@@ -51,10 +55,6 @@ function formatResponseTime(ms: number | null): string {
     if (ms === null) return "\u2014";
     if (ms >= 1000) return (ms / 1000).toFixed(1) + "s";
     return ms + "ms";
-}
-
-function formatTime(iso: string): string {
-    return new Date(iso).toLocaleString();
 }
 
 function typeLabel(type: string): string {
@@ -117,13 +117,14 @@ const overallLabel = computed(() => {
         </div>
 
         <div v-if="data" class="services">
-            <template v-for="service in data.services" :key="service.slug">
-                <div
-                    class="service-card"
-                    :class="{ expanded: expanded[service.slug] }"
-                    :style="{ borderLeftColor: statusColor(service.overall_status) }"
-                    @click="toggle(service.slug)"
-                >
+            <div
+                v-for="service in data.services"
+                :key="service.slug"
+                class="service-card"
+                :class="{ expanded: isExpanded(service.slug) }"
+                :style="{ borderLeftColor: statusColor(service.overall_status) }"
+            >
+                <div class="card-header" @click="toggle(service.slug)">
                     <div class="card-body">
                         <div class="card-name">{{ service.name }}</div>
                         <div class="card-meta">
@@ -134,45 +135,36 @@ const overallLabel = computed(() => {
                         </div>
                     </div>
                     <div class="card-expand">
-                        <span
-                            class="chevron"
-                            :class="{ open: expanded[service.slug] }"
-                        >&#9662;</span>
+                        <span class="chevron" :class="{ open: isExpanded(service.slug) }">&#9662;</span>
                     </div>
                 </div>
 
-                <Transition name="expand">
+                <div v-if="isExpanded(service.slug)" class="monitor-list">
                     <div
-                        v-if="expanded[service.slug]"
-                        class="monitor-panel"
+                        v-for="monitor in service.monitors"
+                        :key="monitor.id"
+                        class="monitor-item"
                     >
-                        <div class="monitor-grid">
-                            <div
-                                v-for="monitor in service.monitors"
-                                :key="monitor.id"
-                                class="monitor-item"
-                            >
-                                <span
-                                    class="status-dot small"
-                                    :style="{ background: statusColor(monitor.status) }"
-                                />
-                                <span class="monitor-name">{{ monitor.name }}</span>
-                                <span class="monitor-type">{{ typeLabel(monitor.type) }}</span>
-                                <span class="response-time" :style="{ color: statusColor(monitor.status) }">
-                                    {{ formatResponseTime(monitor.response_time) }}
-                                </span>
-                            </div>
-                        </div>
+                        <span
+                            class="status-dot small"
+                            :style="{ background: statusColor(monitor.status) }"
+                        />
+                        <span class="monitor-name">{{ monitor.name }}</span>
+                        <span class="monitor-type">{{ typeLabel(monitor.type) }}</span>
+                        <span class="response-time" :style="{ color: statusColor(monitor.status) }">
+                            {{ formatResponseTime(monitor.response_time) }}
+                        </span>
                     </div>
-                </Transition>
-            </template>
+                </div>
+            </div>
         </div>
 
         <footer class="footer">
             <p>
                 Powered by <strong>Iris</strong> &mdash;
-                Data refreshed
-                <span v-if="data">{{ formatTime(data.generated_at) }}</span>
+                <ClientOnly>
+                    <span v-if="data">Data refreshed {{ new Date(data.generated_at).toLocaleString() }}</span>
+                </ClientOnly>
             </p>
             <p class="disclaimer">
                 Independent monitoring &mdash; may not reflect actual service status.
@@ -246,23 +238,25 @@ const overallLabel = computed(() => {
     border: 1px solid var(--color-border);
     border-left-width: 3px;
     border-radius: 8px;
-    padding: 16px;
-    cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 120px;
-}
-
-.service-card:hover {
-    background: var(--color-surface-hover);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
 }
 
 .service-card.expanded {
     grid-column: 1 / -1;
-    min-height: auto;
+}
+
+.card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 16px;
+    cursor: pointer;
+    min-height: 120px;
+    transition: background 0.15s;
+}
+
+.card-header:hover {
+    background: var(--color-surface-hover);
 }
 
 .card-body {
@@ -293,9 +287,7 @@ const overallLabel = computed(() => {
 }
 
 .card-expand {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 8px;
+    padding-top: 2px;
 }
 
 .chevron {
@@ -309,18 +301,11 @@ const overallLabel = computed(() => {
     transform: rotate(180deg);
 }
 
-/* ── Expanded monitor panel ── */
+/* ── Expanded monitor list ── */
 
-.monitor-panel {
-    grid-column: 1 / -1;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
+.monitor-list {
+    border-top: 1px solid var(--color-border);
     padding: 12px 16px;
-    overflow: hidden;
-}
-
-.monitor-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -334,8 +319,6 @@ const overallLabel = computed(() => {
     background: var(--color-bg);
     border-radius: 6px;
     font-size: 13px;
-    flex: 0 1 auto;
-    min-width: 0;
 }
 
 .monitor-name {
@@ -360,24 +343,6 @@ const overallLabel = computed(() => {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     flex-shrink: 0;
-    margin-left: auto;
-}
-
-/* ── Expand/collapse transition ── */
-
-.expand-enter-active,
-.expand-leave-active {
-    transition: opacity 0.25s ease, max-height 0.3s ease;
-    max-height: 500px;
-    overflow: hidden;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-    opacity: 0;
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
 }
 
 /* ── Footer ── */
@@ -423,12 +388,8 @@ const overallLabel = computed(() => {
         grid-column: 1;
     }
 
-    .monitor-grid {
+    .monitor-list {
         flex-direction: column;
-    }
-
-    .monitor-item {
-        width: 100%;
     }
 }
 </style>
