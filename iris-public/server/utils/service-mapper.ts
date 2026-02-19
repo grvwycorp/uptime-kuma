@@ -31,6 +31,9 @@ export interface PublicService {
 export interface PublicStatusData {
     generated_at: string;
     services: PublicService[];
+    monitors_total: number;
+    monitors_up: number;
+    checks_per_second: number | null;
 }
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -97,6 +100,7 @@ function worstStatus(statuses: Array<"up" | "down" | "degraded" | "unknown">): "
 export function mapServices(
     monitors: Record<string, MonitorData>,
     statusMap: Record<string, MonitorStatus>,
+    checksPerSecond: number | null = null,
 ): PublicStatusData {
     // Find top-level groups (services)
     const groups = Object.values(monitors)
@@ -160,8 +164,23 @@ export function mapServices(
         };
     });
 
+    // Aggregate monitor health counts across all services
+    let monitorsTotal = 0;
+    let monitorsUp = 0;
+    for (const svc of services) {
+        for (const mon of svc.monitors) {
+            monitorsTotal++;
+            if (mon.status === "up") {
+                monitorsUp++;
+            }
+        }
+    }
+
     return {
         generated_at: new Date().toISOString(),
         services,
+        monitors_total: monitorsTotal,
+        monitors_up: monitorsUp,
+        checks_per_second: checksPerSecond,
     };
 }

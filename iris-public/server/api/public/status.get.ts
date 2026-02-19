@@ -12,5 +12,5 @@ export default defineEventHandler(async () => {
     const config = useRuntimeConfig();
     const monitors = getMonitors();
     const statusResult = await fetchMonitorStatus(config.otelPromUrl as string);
-    return mapServices(monitors, statusResult.status);
+    return mapServices(monitors, statusResult.status, statusResult.checksPerSecond);
 });

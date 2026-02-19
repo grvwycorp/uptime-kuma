@@ -24,6 +24,7 @@ export interface MonitorStatus {
 export interface StatusResult {
     status: Record<string, MonitorStatus>;
     lastUpdated: number;
+    checksPerSecond: number | null;
 }
 
 interface MetricSample {
@@ -32,9 +33,13 @@ interface MetricSample {
     value: number;
 }
 
-let cachedResult: StatusResult = { status: {}, lastUpdated: 0 };
+let cachedResult: StatusResult = { status: {}, lastUpdated: 0, checksPerSecond: null };
 let cacheTime = 0;
 const CACHE_TTL_MS = 5000;
+
+// Counter snapshot for rate calculation
+let prevCheckTotal = 0;
+let prevCheckTime = 0;
 
 // OTEL Prometheus exporter metric names (with unit suffixes)
 const METRIC_UP = "monitor_up_ratio";
@@ -259,7 +264,27 @@ export async function fetchMonitorStatus(promUrl: string): Promise<StatusResult>
         // Derive group status from children
         deriveGroupStatus(statusMap, masterMonitors);
 
-        cachedResult = { status: statusMap, lastUpdated: Date.now() };
+        // Compute checks/sec from iris_check_total counter delta
+        // OTEL exporter may name it iris_check_total_total or iris_check_total_check_total
+        let checkTotal = 0;
+        for (const sample of samples) {
+            if (sample.name.startsWith("iris_check") && !sample.name.includes("error") && !sample.name.includes("duration")) {
+                checkTotal += sample.value;
+            }
+        }
+
+        let checksPerSecond: number | null = cachedResult.checksPerSecond;
+        if (prevCheckTime > 0 && checkTotal > prevCheckTotal) {
+            const deltaChecks = checkTotal - prevCheckTotal;
+            const deltaSec = (now - prevCheckTime) / 1000;
+            if (deltaSec > 0) {
+                checksPerSecond = Math.round((deltaChecks / deltaSec) * 10) / 10;
+            }
+        }
+        prevCheckTotal = checkTotal;
+        prevCheckTime = now;
+
+        cachedResult = { status: statusMap, lastUpdated: Date.now(), checksPerSecond };
         cacheTime = now;
         return cachedResult;
     } catch (err) {

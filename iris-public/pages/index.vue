@@ -24,6 +24,9 @@ interface Service {
 interface StatusData {
     generated_at: string;
     services: Service[];
+    monitors_total: number;
+    monitors_up: number;
+    checks_per_second: number | null;
 }
 
 const config = useRuntimeConfig();
@@ -97,12 +100,12 @@ function probeColor(service: Service): string {
 }
 
 const serviceCount = computed(() => data.value?.services.length ?? 0);
-const totalMonitors = computed(() =>
-    data.value?.services.reduce((sum, s) => sum + s.monitors.length, 0) ?? 0,
-);
+const monitorsTotal = computed(() => data.value?.monitors_total ?? 0);
+const monitorsUp = computed(() => data.value?.monitors_up ?? 0);
 const probeCount = computed(() =>
     Math.max(...(data.value?.services.map(s => s.probe_count) ?? [0])),
 );
+const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
 </script>
 
 <template>
@@ -117,8 +120,9 @@ const probeCount = computed(() =>
 
         <div v-if="data" class="mission">
             We're currently watching <strong>{{ serviceCount }} services</strong>
-            with <strong>{{ totalMonitors }} monitors</strong>
-            across <strong>{{ probeCount }} probes</strong>
+            with <strong>{{ monitorsUp }}/{{ monitorsTotal }} monitors healthy</strong>
+            across <strong>{{ probeCount }} probes</strong><template v-if="checksPerSecond">,
+            doing roughly <strong>{{ checksPerSecond }} checks/sec</strong></template>
             &mdash; trying to answer a simple question:
             <em>how is Sweden doing on the internet today?</em>
         </div>
