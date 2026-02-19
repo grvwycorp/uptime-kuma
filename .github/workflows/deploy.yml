@@ -46,6 +46,61 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for change detection
+
+      - name: Detect changes
+        id: changes
+        run: |
+          # workflow_dispatch or force rebuild: rebuild everything
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "rebuild_web=true" >> $GITHUB_OUTPUT
+            echo "rebuild_public=true" >> $GITHUB_OUTPUT
+            echo "rebuild_sync=true" >> $GITHUB_OUTPUT
+            echo "Manual dispatch — rebuilding all services"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" == "0000000000000000000000000000000000000000" ]; then
+            echo "rebuild_web=true" >> $GITHUB_OUTPUT
+            echo "rebuild_public=true" >> $GITHUB_OUTPUT
+            echo "rebuild_sync=true" >> $GITHUB_OUTPUT
+            echo "No previous SHA — rebuilding all services"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BEFORE" HEAD)
+          echo "Changed files since last deploy:"
+          echo "$CHANGED"
+          echo ""
+
+          # iris-web: server code, frontend, deps, docker, db migrations
+          if echo "$CHANGED" | grep -qE '^(server/|src/|package\.json|package-lock\.json|\.npmrc|docker/|db/|extra/)'; then
+            echo "rebuild_web=true" >> $GITHUB_OUTPUT
+            echo "→ iris-web: rebuild needed"
+          else
+            echo "rebuild_web=false" >> $GITHUB_OUTPUT
+            echo "→ iris-web: no changes, skipping build"
+          fi
+
+          # iris-public: Nuxt frontend
+          if echo "$CHANGED" | grep -qE '^iris-public/'; then
+            echo "rebuild_public=true" >> $GITHUB_OUTPUT
+            echo "→ iris-public: rebuild needed"
+          else
+            echo "rebuild_public=false" >> $GITHUB_OUTPUT
+            echo "→ iris-public: no changes, skipping build"
+          fi
+
+          # iris-sync: Go sync service
+          if echo "$CHANGED" | grep -qE '^iris-sync/'; then
+            echo "rebuild_sync=true" >> $GITHUB_OUTPUT
+            echo "→ iris-sync: rebuild needed"
+          else
+            echo "rebuild_sync=false" >> $GITHUB_OUTPUT
+            echo "→ iris-sync: no changes, skipping build"
+          fi
 
       - name: Create secrets directory
         run: mkdir -p deploy/master/secrets
@@ -71,15 +126,33 @@ jobs:
           CATALOG_USER: ${{ secrets.CATALOG_USER }}
           CATALOG_PASSWORD: ${{ secrets.CATALOG_PASSWORD }}
           FARO_COLLECTOR_URL: ${{ secrets.FARO_COLLECTOR_URL }}
+          REBUILD_WEB: ${{ steps.changes.outputs.rebuild_web }}
+          REBUILD_PUBLIC: ${{ steps.changes.outputs.rebuild_public }}
+          REBUILD_SYNC: ${{ steps.changes.outputs.rebuild_sync }}
         run: |
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
             BUILD_ARGS="--no-cache"
           fi
-          # Build sequentially — parallel builds OOM on 4GB VPS
-          docker compose -p iris build $BUILD_ARGS iris-web
-          docker compose -p iris build $BUILD_ARGS iris-public
-          docker compose -p iris build $BUILD_ARGS iris-sync
+          # Only rebuild services whose source files changed
+          if [ "$REBUILD_WEB" == "true" ]; then
+            echo "=== Building iris-web ==="
+            docker compose -p iris build $BUILD_ARGS iris-web
+          else
+            echo "=== Skipping iris-web build (no changes) ==="
+          fi
+          if [ "$REBUILD_PUBLIC" == "true" ]; then
+            echo "=== Building iris-public ==="
+            docker compose -p iris build $BUILD_ARGS iris-public
+          else
+            echo "=== Skipping iris-public build (no changes) ==="
+          fi
+          if [ "$REBUILD_SYNC" == "true" ]; then
+            echo "=== Building iris-sync ==="
+            docker compose -p iris build $BUILD_ARGS iris-sync
+          else
+            echo "=== Skipping iris-sync build (no changes) ==="
+          fi
           docker compose -p iris up -d --force-recreate --remove-orphans
           # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
           docker compose -p iris restart iris-otel || true
@@ -159,6 +232,35 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for change detection
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "rebuild=true" >> $GITHUB_OUTPUT
+            echo "Manual dispatch — rebuilding"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" == "0000000000000000000000000000000000000000" ]; then
+            echo "rebuild=true" >> $GITHUB_OUTPUT
+            echo "No previous SHA — rebuilding"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BEFORE" HEAD)
+
+          # Probe uses the same Dockerfile as iris-web
+          if echo "$CHANGED" | grep -qE '^(server/|src/|package\.json|package-lock\.json|\.npmrc|docker/|db/|extra/)'; then
+            echo "rebuild=true" >> $GITHUB_OUTPUT
+            echo "→ iris-probe: rebuild needed"
+          else
+            echo "rebuild=false" >> $GITHUB_OUTPUT
+            echo "→ iris-probe: no changes, skipping build"
+          fi
 
       - name: Get probe identity
         id: identity
@@ -174,12 +276,18 @@ jobs:
           IRIS_PROBE_USER: ${{ secrets.IRIS_PROBE_USER }}
           IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
           IRIS_MASTER_IP: ${{ secrets.IRIS_MASTER_IP }}
+          REBUILD: ${{ steps.changes.outputs.rebuild }}
         run: |
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
             BUILD_ARGS="--no-cache"
           fi
-          docker compose -p iris build $BUILD_ARGS
+          if [ "$REBUILD" == "true" ]; then
+            echo "=== Building iris-probe ==="
+            docker compose -p iris build $BUILD_ARGS
+          else
+            echo "=== Skipping build (no changes) ==="
+          fi
           docker compose -p iris up -d --force-recreate --remove-orphans
           sleep 5
           docker compose -p iris ps

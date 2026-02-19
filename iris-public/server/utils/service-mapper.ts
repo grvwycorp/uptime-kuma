@@ -23,6 +23,8 @@ export interface PublicService {
     name: string;
     slug: string;
     overall_status: "up" | "down" | "degraded" | "unknown";
+    probe_count: number;
+    probes_up: number;
     monitors: PublicMonitor[];
 }
 
@@ -125,10 +127,35 @@ export function mapServices(
         const childStatuses = publicMonitors.map(m => m.status);
         const overall = worstStatus(childStatuses);
 
+        // Aggregate probe health across all monitors in this service
+        // A probe is "up" for this service if it reports up for every monitor it covers
+        const probeUpCounts = new Map<string, { total: number; up: number }>();
+        for (const child of children) {
+            const st = statusMap[String(child.id)];
+            if (!st) {
+                continue;
+            }
+            for (const [probeId, probeStatus] of Object.entries(st.probes)) {
+                if (!probeUpCounts.has(probeId)) {
+                    probeUpCounts.set(probeId, { total: 0, up: 0 });
+                }
+                const counts = probeUpCounts.get(probeId)!;
+                counts.total++;
+                if (probeStatus.up) {
+                    counts.up++;
+                }
+            }
+        }
+        const probeCount = probeUpCounts.size;
+        const probesUp = Array.from(probeUpCounts.values())
+            .filter(c => c.up === c.total).length;
+
         return {
             name: group.name,
             slug: slugify(group.name),
             overall_status: overall,
+            probe_count: probeCount,
+            probes_up: probesUp,
             monitors: publicMonitors,
         };
     });

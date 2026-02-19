@@ -17,6 +17,8 @@ interface Service {
     slug: string;
     monitors: Monitor[];
     overall_status: "up" | "degraded" | "down" | "unknown";
+    probe_count: number;
+    probes_up: number;
 }
 
 interface StatusData {
@@ -51,6 +53,7 @@ function statusColor(status: string): string {
 
 function formatResponseTime(ms: number | null): string {
     if (ms === null) return "\u2014";
+    if (ms >= 1000) return (ms / 1000).toFixed(1) + "s";
     return ms + "ms";
 }
 
@@ -68,6 +71,18 @@ function typeLabel(type: string): string {
         "port": "Port",
     };
     return labels[type] || type;
+}
+
+function probeLabel(service: Service): string {
+    if (service.probe_count === 0) return "No probes";
+    return `${service.probes_up}/${service.probe_count} probes`;
+}
+
+function probeColor(service: Service): string {
+    if (service.probe_count === 0) return "var(--color-text-muted)";
+    if (service.probes_up === service.probe_count) return "var(--color-status-up)";
+    if (service.probes_up === 0) return "var(--color-status-down)";
+    return "var(--color-status-degraded)";
 }
 
 const overallStatus = computed(() => {
@@ -106,47 +121,55 @@ const overallLabel = computed(() => {
         </div>
 
         <div v-if="data" class="services">
-            <div
-                v-for="service in data.services"
-                :key="service.slug"
-                class="service-card"
-            >
-                <div class="service-header" @click="toggle(service.slug)">
-                    <div class="service-left">
-                        <span
-                            class="status-dot"
-                            :style="{ background: statusColor(service.overall_status) }"
-                        />
-                        <span class="service-name">{{ service.name }}</span>
-                        <span class="monitor-count">{{ service.monitors.length }} monitors</span>
+            <template v-for="service in data.services" :key="service.slug">
+                <div
+                    class="service-card"
+                    :class="{ expanded: expanded.has(service.slug) }"
+                    :style="{ borderLeftColor: statusColor(service.overall_status) }"
+                    @click="toggle(service.slug)"
+                >
+                    <div class="card-body">
+                        <div class="card-name">{{ service.name }}</div>
+                        <div class="card-meta">
+                            <span class="probe-count" :style="{ color: probeColor(service) }">
+                                {{ probeLabel(service) }}
+                            </span>
+                            <span class="monitor-count">{{ service.monitors.length }} monitors</span>
+                        </div>
                     </div>
-                    <div class="service-right">
-                        <span class="expand-icon">{{ expanded.has(service.slug) ? "\u25B2" : "\u25BC" }}</span>
+                    <div class="card-expand">
+                        <span
+                            class="chevron"
+                            :class="{ open: expanded.has(service.slug) }"
+                        >&#9662;</span>
                     </div>
                 </div>
 
-                <div v-if="expanded.has(service.slug)" class="monitor-list">
+                <Transition name="expand">
                     <div
-                        v-for="monitor in service.monitors"
-                        :key="monitor.id"
-                        class="monitor-row"
+                        v-if="expanded.has(service.slug)"
+                        class="monitor-panel"
                     >
-                        <div class="monitor-left">
-                            <span
-                                class="status-dot small"
-                                :style="{ background: statusColor(monitor.status) }"
-                            />
-                            <span class="monitor-name">{{ monitor.name }}</span>
-                            <span class="monitor-type">{{ typeLabel(monitor.type) }}</span>
-                        </div>
-                        <div class="monitor-right">
-                            <span class="response-time" :style="{ color: statusColor(monitor.status) }">
-                                {{ formatResponseTime(monitor.response_time) }}
-                            </span>
+                        <div class="monitor-grid">
+                            <div
+                                v-for="monitor in service.monitors"
+                                :key="monitor.id"
+                                class="monitor-item"
+                            >
+                                <span
+                                    class="status-dot small"
+                                    :style="{ background: statusColor(monitor.status) }"
+                                />
+                                <span class="monitor-name">{{ monitor.name }}</span>
+                                <span class="monitor-type">{{ typeLabel(monitor.type) }}</span>
+                                <span class="response-time" :style="{ color: statusColor(monitor.status) }">
+                                    {{ formatResponseTime(monitor.response_time) }}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                </Transition>
+            </template>
         </div>
 
         <footer class="footer">
@@ -165,7 +188,7 @@ const overallLabel = computed(() => {
 
 <style scoped>
 .page {
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
     padding: 40px 20px;
 }
@@ -214,102 +237,154 @@ const overallLabel = computed(() => {
     height: 8px;
 }
 
+/* ── Card grid ── */
+
 .services {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
 }
 
 .service-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
+    border-left-width: 3px;
     border-radius: 8px;
-    overflow: hidden;
-}
-
-.service-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 20px;
+    padding: 16px;
     cursor: pointer;
-    transition: background 0.15s;
-}
-
-.service-header:hover {
-    background: var(--color-surface-hover);
-}
-
-.service-left {
+    transition: background 0.15s, box-shadow 0.15s;
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 120px;
 }
 
-.service-name {
-    font-weight: 500;
+.service-card:hover {
+    background: var(--color-surface-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.service-card.expanded {
+    grid-column: 1 / -1;
+    min-height: auto;
+}
+
+.card-body {
+    flex: 1;
+}
+
+.card-name {
+    font-weight: 600;
     font-size: 15px;
+    margin-bottom: 12px;
+    line-height: 1.3;
+}
+
+.card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+}
+
+.probe-count {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
 }
 
 .monitor-count {
     color: var(--color-text-muted);
-    font-size: 12px;
 }
 
-.service-right {
+.card-expand {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 8px;
 }
 
-.response-time {
-    font-size: 13px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-
-.expand-icon {
+.chevron {
     color: var(--color-text-muted);
-    font-size: 10px;
+    font-size: 14px;
+    transition: transform 0.25s ease;
+    display: inline-block;
 }
 
-.monitor-list {
-    border-top: 1px solid var(--color-border);
+.chevron.open {
+    transform: rotate(180deg);
 }
 
-.monitor-row {
+/* ── Expanded monitor panel ── */
+
+.monitor-panel {
+    grid-column: 1 / -1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    overflow: hidden;
+}
+
+.monitor-grid {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 20px 10px 40px;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.monitor-row:last-child {
-    border-bottom: none;
-}
-
-.monitor-left {
-    display: flex;
-    align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
-.monitor-name {
+.monitor-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--color-bg);
+    border-radius: 6px;
     font-size: 13px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.monitor-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .monitor-type {
     font-size: 11px;
     color: var(--color-text-muted);
-    background: var(--color-bg);
+    background: var(--color-border);
     padding: 1px 6px;
     border-radius: 4px;
-}
-
-.monitor-right {
+    white-space: nowrap;
     flex-shrink: 0;
 }
+
+.response-time {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* ── Expand/collapse transition ── */
+
+.expand-enter-active,
+.expand-leave-active {
+    transition: opacity 0.25s ease, max-height 0.3s ease;
+    max-height: 500px;
+    overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* ── Footer ── */
 
 .footer {
     text-align: center;
@@ -335,5 +410,29 @@ const overallLabel = computed(() => {
 
 .disclaimer a:hover {
     color: var(--color-text);
+}
+
+/* ── Mobile ── */
+
+@media (max-width: 640px) {
+    .page {
+        padding: 24px 16px;
+    }
+
+    .services {
+        grid-template-columns: 1fr;
+    }
+
+    .service-card.expanded {
+        grid-column: 1;
+    }
+
+    .monitor-grid {
+        flex-direction: column;
+    }
+
+    .monitor-item {
+        width: 100%;
+    }
 }
 </style>
