@@ -34,14 +34,10 @@ onMounted(() => {
     onUnmounted(() => clearInterval(interval));
 });
 
-const expanded = ref<Set<string>>(new Set());
+const expanded = ref<Record<string, boolean>>({});
 
 function toggle(slug: string) {
-    if (expanded.value.has(slug)) {
-        expanded.value.delete(slug);
-    } else {
-        expanded.value.add(slug);
-    }
+    expanded.value[slug] = !expanded.value[slug];
 }
 
 function statusColor(status: string): string {
@@ -124,7 +120,7 @@ const overallLabel = computed(() => {
             <template v-for="service in data.services" :key="service.slug">
                 <div
                     class="service-card"
-                    :class="{ expanded: expanded.has(service.slug) }"
+                    :class="{ expanded: expanded[service.slug] }"
                     :style="{ borderLeftColor: statusColor(service.overall_status) }"
                     @click="toggle(service.slug)"
                 >
@@ -140,14 +136,14 @@ const overallLabel = computed(() => {
                     <div class="card-expand">
                         <span
                             class="chevron"
-                            :class="{ open: expanded.has(service.slug) }"
+                            :class="{ open: expanded[service.slug] }"
                         >&#9662;</span>
                     </div>
                 </div>
 
                 <Transition name="expand">
                     <div
-                        v-if="expanded.has(service.slug)"
+                        v-if="expanded[service.slug]"
                         class="monitor-panel"
                     >
                         <div class="monitor-grid">
