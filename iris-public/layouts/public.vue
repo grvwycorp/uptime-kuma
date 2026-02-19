@@ -3,7 +3,14 @@
 </template>
 
 <script setup lang="ts">
+const { resolved, init } = useColorMode();
+
 useHead({
-    title: "Iris — Swedish Infrastructure Status",
+    title: "Iris",
+    htmlAttrs: { "data-theme": resolved },
+});
+
+onMounted(() => {
+    init();
 });
 </script>

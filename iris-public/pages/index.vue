@@ -28,6 +28,7 @@ interface StatusData {
 
 const config = useRuntimeConfig();
 const { data, refresh } = await useFetch<StatusData>("/api/public/status");
+const { toggle, modeLabel, modeIcon } = useColorMode();
 
 onMounted(() => {
     const interval = setInterval(refresh, config.public.statusPollInterval as number);
@@ -36,7 +37,7 @@ onMounted(() => {
 
 const expandedSlug = ref<string | null>(null);
 
-function toggle(slug: string) {
+function toggleCard(slug: string) {
     expandedSlug.value = expandedSlug.value === slug ? null : slug;
 }
 
@@ -52,17 +53,17 @@ function statusColor(status: string): string {
 }
 
 function borderColor(status: string): string {
-    if (status === "up") return "rgba(167, 192, 128, 0.2)";
-    if (status === "degraded") return "rgba(219, 188, 127, 0.2)";
-    if (status === "unknown") return "rgba(122, 132, 120, 0.2)";
-    return "rgba(230, 126, 128, 0.2)";
+    if (status === "up") return "var(--color-status-up-border)";
+    if (status === "degraded") return "var(--color-status-degraded-border)";
+    if (status === "unknown") return "var(--color-status-unknown-border)";
+    return "var(--color-status-down-border)";
 }
 
 function borderColorHover(status: string): string {
-    if (status === "up") return "rgba(167, 192, 128, 0.4)";
-    if (status === "degraded") return "rgba(219, 188, 127, 0.4)";
-    if (status === "unknown") return "rgba(122, 132, 120, 0.4)";
-    return "rgba(230, 126, 128, 0.4)";
+    if (status === "up") return "var(--color-status-up-border-hover)";
+    if (status === "degraded") return "var(--color-status-degraded-border-hover)";
+    if (status === "unknown") return "var(--color-status-unknown-border-hover)";
+    return "var(--color-status-down-border-hover)";
 }
 
 function formatResponseTime(ms: number | null): string {
@@ -94,20 +95,32 @@ function probeColor(service: Service): string {
     if (service.probes_up === 0) return "var(--color-status-down)";
     return "var(--color-status-degraded)";
 }
+
+const serviceCount = computed(() => data.value?.services.length ?? 0);
+const totalMonitors = computed(() =>
+    data.value?.services.reduce((sum, s) => sum + s.monitors.length, 0) ?? 0,
+);
+const probeCount = computed(() =>
+    Math.max(...(data.value?.services.map(s => s.probe_count) ?? [0])),
+);
 </script>
 
 <template>
     <div class="page">
         <header class="header">
-            <span class="brand">iris</span>
-            <h1>Swedish Infrastructure Status</h1>
+            <h1 class="brand">IRIS</h1>
             <p class="subtitle">Independent monitoring of critical Swedish digital services</p>
+            <button class="theme-toggle" :title="modeLabel" @click="toggle">
+                {{ modeIcon }}
+            </button>
         </header>
 
-        <div class="mission">
-            Iris is a small-scale project trying to answer the question:
-            <em>How is Sweden doing on the internet today?</em>
-            Measurements might be inaccurate, but we hope you enjoy looking around.
+        <div v-if="data" class="mission">
+            We're currently watching <strong>{{ serviceCount }} services</strong>
+            with <strong>{{ totalMonitors }} monitors</strong>
+            across <strong>{{ probeCount }} probes</strong>
+            &mdash; trying to answer a simple question:
+            <em>how is Sweden doing on the internet today?</em>
         </div>
 
         <div v-if="data" class="services">
@@ -121,7 +134,7 @@ function probeColor(service: Service): string {
                     '--card-border-hover': borderColorHover(service.overall_status),
                 }"
             >
-                <div class="card-header" @click="toggle(service.slug)">
+                <div class="card-header" @click="toggleCard(service.slug)">
                     <div class="card-body">
                         <div class="card-name">{{ service.name }}</div>
                         <div class="card-meta">
@@ -187,48 +200,66 @@ function probeColor(service: Service): string {
 /* ── Header ── */
 
 .header {
+    text-align: center;
     margin-bottom: 24px;
+    position: relative;
 }
 
 .brand {
-    display: block;
-    font-size: 13px;
-    font-weight: 300;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--color-focus);
-    margin-bottom: 4px;
-}
-
-.header h1 {
-    font-size: 28px;
+    font-size: 48px;
     font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--color-text);
-    line-height: 1.2;
+    letter-spacing: 0.08em;
+    color: var(--color-accent);
+    line-height: 1.1;
+    margin-bottom: 8px;
 }
 
 .subtitle {
     color: var(--color-text-muted);
-    font-size: 14px;
-    margin-top: 6px;
+    font-size: 15px;
+}
+
+.theme-toggle {
+    position: absolute;
+    top: 8px;
+    right: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    transition: border-color 0.2s, color 0.2s;
+    line-height: 1;
+}
+
+.theme-toggle:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
 }
 
 /* ── Mission statement ── */
 
 .mission {
+    text-align: center;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 10px;
-    padding: 16px 20px;
+    padding: 20px 24px;
     margin-bottom: 32px;
-    font-size: 14px;
+    font-size: 15px;
     color: var(--color-text-muted);
-    line-height: 1.6;
+    line-height: 1.7;
+}
+
+.mission strong {
+    color: var(--color-text);
+    font-weight: 600;
 }
 
 .mission em {
-    color: var(--color-text);
+    color: var(--color-accent);
     font-style: italic;
 }
 
@@ -247,7 +278,7 @@ function probeColor(service: Service): string {
     border: 1px solid var(--card-border, var(--color-border));
     border-radius: 10px;
     overflow: hidden;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .service-card:hover {
@@ -257,7 +288,7 @@ function probeColor(service: Service): string {
 .service-card.expanded {
     grid-column: 1 / -1;
     border-color: var(--color-focus);
-    box-shadow: 0 0 0 1px var(--color-focus), 0 4px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 0 0 1px var(--color-focus), 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
 .card-header {
@@ -390,6 +421,7 @@ function probeColor(service: Service): string {
 /* ── Footer ── */
 
 .footer {
+    text-align: center;
     margin-top: 48px;
     color: var(--color-text-muted);
     font-size: 13px;
@@ -421,8 +453,8 @@ function probeColor(service: Service): string {
         padding: 24px 16px;
     }
 
-    .header h1 {
-        font-size: 22px;
+    .brand {
+        font-size: 36px;
     }
 
     .services {
@@ -444,6 +476,13 @@ function probeColor(service: Service): string {
 
     .monitor-name {
         white-space: normal;
+    }
+
+    .theme-toggle {
+        top: 0;
+        right: 0;
+        padding: 4px 8px;
+        font-size: 16px;
     }
 }
 </style>

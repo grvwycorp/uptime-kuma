@@ -1,13 +1,16 @@
 /*
- * Iris Theme — Everforest Dark Medium base with semantic aliases
+ * Iris Theme — Nordic Soft-Tech
  *
- * Catalog components reference Everforest vars directly (--bg0, --green, etc.).
- * New/public code should use semantic aliases (--color-bg, --color-status-up, etc.).
- * To rebrand: change the semantic alias mappings below.
+ * Light/dark mode via [data-theme] attribute on <html>.
+ * Default (no attribute) = dark mode (SSR fallback, prevents flash).
+ *
+ * Public pages use --color-* semantic vars (theme-aware).
+ * Docs/catalog pages reference Everforest vars directly (--bg0, --green, etc.)
+ * which are kept for backwards compatibility.
  */
 
 :root {
-    /* === Everforest palette (catalog components use these directly) === */
+    /* === Everforest palette (docs/catalog backwards compat) === */
     --bg-dim: #232A2E;
     --bg0: #2D353B;
     --bg1: #343F44;
@@ -15,13 +18,10 @@
     --bg3: #475258;
     --bg4: #4F585E;
     --bg5: #56635F;
-
     --fg: #D3C6AA;
-
     --grey0: #7A8478;
     --grey1: #859289;
     --grey2: #9DA9A0;
-
     --red: #E67E80;
     --orange: #E69875;
     --yellow: #DBBC7F;
@@ -30,23 +30,62 @@
     --blue: #7FBBB3;
     --purple: #D699B6;
 
-    /* === Semantic aliases (use these in new code) === */
-    --color-bg: var(--bg-dim);
-    --color-surface: var(--bg0);
-    --color-surface-hover: var(--bg1);
-    --color-surface-elevated: var(--bg1);
-    --color-border: var(--bg2);
-    --color-text: var(--fg);
-    --color-text-muted: var(--grey1);
-    --color-text-subtle: var(--grey0);
-    --color-status-up: var(--green);
-    --color-status-down: var(--red);
-    --color-status-degraded: var(--yellow);
-    --color-status-unknown: var(--grey0);
-    --color-accent: var(--green);
-    --color-accent-hover: var(--aqua);
-    --color-focus: var(--blue);
+    /* === Nordic Soft-Tech — Dark mode (default / SSR fallback) === */
+    --color-bg: #1A1C1E;
+    --color-surface: #24272A;
+    --color-surface-hover: #2E3235;
+    --color-surface-elevated: #2E3235;
+    --color-border: #3A3E42;
+    --color-text: #E2E2E6;
+    --color-text-muted: #9BA0A6;
+    --color-text-subtle: #6B7074;
+    --color-status-up: #A7C4AD;
+    --color-status-down: #E67E80;
+    --color-status-degraded: #F2C18D;
+    --color-status-unknown: #6B7074;
+    --color-accent: #89AECF;
+    --color-accent-hover: #A3C4DE;
+    --color-focus: #89AECF;
+
+    /* Card border glow — status-tinted at low opacity */
+    --color-status-up-border: rgba(167, 196, 173, 0.2);
+    --color-status-up-border-hover: rgba(167, 196, 173, 0.4);
+    --color-status-down-border: rgba(230, 126, 128, 0.2);
+    --color-status-down-border-hover: rgba(230, 126, 128, 0.4);
+    --color-status-degraded-border: rgba(242, 193, 141, 0.2);
+    --color-status-degraded-border-hover: rgba(242, 193, 141, 0.4);
+    --color-status-unknown-border: rgba(107, 112, 116, 0.2);
+    --color-status-unknown-border-hover: rgba(107, 112, 116, 0.4);
+
     --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+}
+
+/* === Light mode === */
+[data-theme="light"] {
+    --color-bg: #F8F9FA;
+    --color-surface: #FFFFFF;
+    --color-surface-hover: #F0F1F3;
+    --color-surface-elevated: #F0F1F3;
+    --color-border: #DDE0E4;
+    --color-text: #2D3136;
+    --color-text-muted: #6B7280;
+    --color-text-subtle: #9CA3AF;
+    --color-status-up: #88A68E;
+    --color-status-down: #C75B5B;
+    --color-status-degraded: #D9A066;
+    --color-status-unknown: #9CA3AF;
+    --color-accent: #4A6D8C;
+    --color-accent-hover: #3A5A75;
+    --color-focus: #4A6D8C;
+
+    --color-status-up-border: rgba(136, 166, 142, 0.25);
+    --color-status-up-border-hover: rgba(136, 166, 142, 0.45);
+    --color-status-down-border: rgba(199, 91, 91, 0.25);
+    --color-status-down-border-hover: rgba(199, 91, 91, 0.45);
+    --color-status-degraded-border: rgba(217, 160, 102, 0.25);
+    --color-status-degraded-border-hover: rgba(217, 160, 102, 0.45);
+    --color-status-unknown-border: rgba(156, 163, 175, 0.25);
+    --color-status-unknown-border-hover: rgba(156, 163, 175, 0.45);
 }
 
 *,
@@ -64,6 +103,7 @@ body {
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s, color 0.3s;
 }
 
 a {
@@ -86,12 +126,12 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--bg3);
+    background: var(--color-border);
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--bg4);
+    background: var(--color-text-subtle);
 }
 
 /* Skeleton loading shimmer */
@@ -101,7 +141,7 @@ a:hover {
 }
 
 .skeleton {
-    background: linear-gradient(90deg, var(--bg1) 25%, var(--bg2) 50%, var(--bg1) 75%);
+    background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
     border-radius: 4px;
