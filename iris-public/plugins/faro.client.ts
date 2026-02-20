@@ -34,7 +34,6 @@ export default defineNuxtPlugin(() => {
                 ...getWebInstrumentations(),
                 new TracingInstrumentation(),
             ],
-            sessionTracking: { enabled: false },
         });
         console.log("[faro] Initialized successfully");
     }).catch((err) => {
