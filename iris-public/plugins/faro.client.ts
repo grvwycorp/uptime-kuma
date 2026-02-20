@@ -8,6 +8,7 @@ export default defineNuxtPlugin(() => {
     const faroUrl = config.public.faroUrl as string;
 
     if (!faroUrl) {
+        console.log("[faro] Disabled (no NUXT_PUBLIC_FARO_URL configured)");
         return;
     }
 
@@ -15,8 +16,11 @@ export default defineNuxtPlugin(() => {
 
     // Only initialize Faro on public pages (not /docs/*)
     if (route.path.startsWith("/docs")) {
+        console.log("[faro] Skipped on /docs route");
         return;
     }
+
+    console.log("[faro] Initializing with collector:", faroUrl.replace(/\/collect\/.*/, "/collect/***"));
 
     // Dynamic import to avoid bundling Faro on auth-protected pages
     Promise.all([
@@ -32,6 +36,7 @@ export default defineNuxtPlugin(() => {
             ],
             sessionTracking: { enabled: false },
         });
+        console.log("[faro] Initialized successfully");
     }).catch((err) => {
         console.warn("[faro] Failed to initialize:", err);
     });
