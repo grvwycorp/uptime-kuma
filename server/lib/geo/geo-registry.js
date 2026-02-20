@@ -6,9 +6,9 @@ const { log } = require("../../../src/util");
  * unused dependencies.
  */
 const PROVIDERS = {
-    "ipbot": () => {
-        const IpbotGeoProvider = require("./providers/ipbot");
-        return new IpbotGeoProvider(process.env.GEO_API_KEY);
+    "ip-api": () => {
+        const IpApiGeoProvider = require("./providers/ip-api");
+        return new IpApiGeoProvider();
     },
     // Future providers:
     // "maxmind": () => { ... },

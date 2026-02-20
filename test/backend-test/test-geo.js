@@ -2,7 +2,7 @@ const { describe, test, beforeEach } = require("node:test");
 const assert = require("node:assert");
 
 const GeoProvider = require("../../server/lib/geo/geo-provider");
-const IpbotGeoProvider = require("../../server/lib/geo/providers/ipbot");
+const IpApiGeoProvider = require("../../server/lib/geo/providers/ip-api");
 const { extractHostname } = require("../../server/lib/geo/geo-resolver");
 
 describe("GeoProvider Base Class", () => {
@@ -28,83 +28,68 @@ describe("GeoProvider Base Class", () => {
     });
 });
 
-describe("IpbotGeoProvider", () => {
+describe("IpApiGeoProvider", () => {
     test("has correct name", () => {
-        const provider = new IpbotGeoProvider();
-        assert.strictEqual(provider.name, "ipbot");
+        const provider = new IpApiGeoProvider();
+        assert.strictEqual(provider.name, "ip-api");
     });
 
     test("sets baseUrl correctly", () => {
-        const provider = new IpbotGeoProvider();
-        assert.strictEqual(provider.baseUrl, "https://api.ipbot.com");
+        const provider = new IpApiGeoProvider();
+        assert.strictEqual(provider.baseUrl, "http://ip-api.com/json");
     });
 
-    test("stores API key", () => {
-        const provider = new IpbotGeoProvider("test-key-123");
-        assert.strictEqual(provider.apiKey, "test-key-123");
+    test("sets fields parameter", () => {
+        const provider = new IpApiGeoProvider();
+        assert.ok(provider.fields.includes("countryCode"));
+        assert.ok(provider.fields.includes("lat"));
+        assert.ok(provider.fields.includes("lon"));
+        assert.ok(provider.fields.includes("as"));
+        assert.ok(provider.fields.includes("query"));
     });
 
-    test("handles null/undefined API key", () => {
-        const provider = new IpbotGeoProvider(null);
-        assert.strictEqual(provider.apiKey, null);
-
-        const provider2 = new IpbotGeoProvider();
-        assert.strictEqual(provider2.apiKey, null);
-    });
-
-    test("buildHeaders includes User-Agent", () => {
-        const provider = new IpbotGeoProvider();
-        const headers = provider.buildHeaders();
-        assert.strictEqual(headers["User-Agent"], "Iris-Probe/1.0");
-        assert.strictEqual(headers["X-API-Key"], undefined);
-    });
-
-    test("buildHeaders includes API key when set", () => {
-        const provider = new IpbotGeoProvider("ipb_free_abc123");
-        const headers = provider.buildHeaders();
-        assert.strictEqual(headers["User-Agent"], "Iris-Probe/1.0");
-        assert.strictEqual(headers["X-API-Key"], "ipb_free_abc123");
-    });
-
-    test("normalize() maps IPbot response to standard format", () => {
-        const provider = new IpbotGeoProvider();
+    test("normalize() maps ip-api response to standard format", () => {
+        const provider = new IpApiGeoProvider();
         const raw = {
-            ip: "8.8.8.8",
-            location: {
-                country_code: "US",
-                city: "Mountain View",
-                latitude: 37.386,
-                longitude: -122.0838,
-                region: "California",
-                postal: "94043",
-                timezone: "-08:00",
-            },
-            network: {
-                asn: "AS15169",
-                org: "Google LLC",
-                radar: "datacenter",
-            },
-            security: {
-                risk_score: 10,
-                is_datacenter: true,
-                is_proxy: false,
-            },
+            status: "success",
+            countryCode: "SE",
+            regionName: "Stockholm",
+            city: "Stockholm",
+            lat: 59.3293,
+            lon: 18.0686,
+            as: "AS24940 Hetzner Online GmbH",
+            org: "Hetzner",
+            query: "64.112.124.66",
         };
 
         const result = provider.normalize(raw);
         assert.deepStrictEqual(result, {
-            lat: 37.386,
-            lon: -122.0838,
-            country: "US",
-            city: "Mountain View",
-            region: "California",
-            asn: "AS15169",
-            org: "Google LLC",
+            lat: 59.3293,
+            lon: 18.0686,
+            country: "SE",
+            city: "Stockholm",
+            region: "Stockholm",
+            asn: "AS24940",
+            org: "Hetzner",
         });
     });
 
+    test("normalize() extracts ASN number from compound field", () => {
+        const provider = new IpApiGeoProvider();
+
+        const result = provider.normalize({
+            as: "AS15169 Google LLC",
+            countryCode: "US",
+            city: "Mountain View",
+            lat: 37.386,
+            lon: -122.0838,
+        });
+        assert.strictEqual(result.asn, "AS15169");
+        assert.strictEqual(result.org, "");
+    });
+
     test("normalize() handles missing fields gracefully", () => {
-        const provider = new IpbotGeoProvider();
+        const provider = new IpApiGeoProvider();
 
         const result = provider.normalize({});
         assert.deepStrictEqual(result, {
@@ -118,17 +103,37 @@ describe("IpbotGeoProvider", () => {
         });
     });
 
-    test("normalize() handles partial location data", () => {
-        const provider = new IpbotGeoProvider();
+    test("normalize() handles empty as field", () => {
+        const provider = new IpApiGeoProvider();
 
-        const result = provider.normalize({
-            location: { country_code: "DE" },
-            network: { asn: "AS24940" },
-        });
-        assert.strictEqual(result.country, "DE");
-        assert.strictEqual(result.asn, "AS24940");
-        assert.strictEqual(result.lat, null);
-        assert.strictEqual(result.city, "");
+        const result = provider.normalize({ as: "" });
+        assert.strictEqual(result.asn, "");
+    });
+
+    test("checkStatus() throws on fail response", () => {
+        const provider = new IpApiGeoProvider();
+
+        assert.throws(
+            () => provider.checkStatus({ status: "fail", message: "invalid query" }),
+            { message: "ip-api lookup failed: invalid query" }
+        );
+    });
+
+    test("checkStatus() does not throw on success", () => {
+        const provider = new IpApiGeoProvider();
+
+        assert.doesNotThrow(
+            () => provider.checkStatus({ status: "success" })
+        );
+    });
+
+    test("checkStatus() handles missing message on fail", () => {
+        const provider = new IpApiGeoProvider();
+
+        assert.throws(
+            () => provider.checkStatus({ status: "fail" }),
+            { message: "ip-api lookup failed: unknown error" }
+        );
     });
 });
 
