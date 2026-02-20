@@ -979,6 +979,12 @@ class Monitor extends BeanModel {
                 }
 
                 retries = 0;
+
+                // Iris geo: resolve target geolocation (fire-and-forget, non-blocking)
+                const { resolveTargetGeo } = require("../lib/geo/geo-resolver");
+                resolveTargetGeo(this).catch((err) => {
+                    log.debug("geo", `Target geo resolution failed for monitor #${this.id}: ${err.message}`);
+                });
             } catch (error) {
                 if (error?.name === "CanceledError") {
                     bean.msg = `timeout by AbortSignal (${this.timeout}s)`;

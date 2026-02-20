@@ -142,7 +142,7 @@ services:
       NUXT_OTEL_PROM_URL: http://iris-otel:8889/metrics
       NUXT_AUTH_USERNAME: ${CATALOG_USER:-admin}
       NUXT_AUTH_PASSWORD: ${CATALOG_PASSWORD:-}
-      FARO_COLLECTOR_URL: ${FARO_COLLECTOR_URL:-}
+      NUXT_PUBLIC_FARO_URL: ${FARO_COLLECTOR_URL:-}
     ports:
       - "3002:3000"
     depends_on:

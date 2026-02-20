@@ -165,6 +165,12 @@ async function init() {
         unit: "1",
     });
 
+    // Target geo info metric for label joins (low frequency)
+    gauges.targetGeoInfo = meter.createObservableGauge("target_geo_info", {
+        description: "Target IP geolocation metadata for label joins",
+        unit: "1",
+    });
+
     // Mesh health
     gauges.meshMasterLatency = meter.createObservableGauge("mesh_master_latency_ms", {
         description: "Latency to master node via Tailscale",
@@ -398,6 +404,42 @@ function recordMonitorInfo(monitorId, metadata) {
     }
 
     recordValue("monitorInfo", `info:${monitorId}`, 1, labels);
+}
+
+/**
+ * Record target geo info metric for Grafana label joins.
+ * Low-frequency info metric carrying high-cardinality geo labels.
+ * Always emits value 1, joined at query time via group_left.
+ * @param {number|string} monitorId Monitor ID
+ * @param {object} geoData Target geo data
+ * @param {string} geoData.resolvedIp The resolved IP address
+ * @param {number|null} geoData.lat Latitude
+ * @param {number|null} geoData.lon Longitude
+ * @param {string} geoData.country Country code (ISO 3166-1 alpha-2)
+ * @param {string} geoData.city City name
+ * @param {string} geoData.asn ASN string (e.g. "AS15169")
+ */
+function recordTargetGeo(monitorId, geoData) {
+    if (!initialized || !otel.isEnabled()) {
+        return;
+    }
+
+    const labels = {
+        monitor_id: String(monitorId),
+        target_ip: String(geoData.resolvedIp || ""),
+        target_country: String(geoData.country || ""),
+        target_city: String(geoData.city || ""),
+        target_asn: String(geoData.asn || ""),
+        target_lat: String(geoData.lat ?? ""),
+        target_lon: String(geoData.lon ?? ""),
+    };
+
+    if (probeId) {
+        labels.probe_id = probeId;
+    }
+
+    // Key includes probe_id to support per-probe anycast resolution
+    recordValue("targetGeoInfo", `targetGeo:${probeId}:${monitorId}`, 1, labels);
 }
 
 /**
@@ -646,6 +688,7 @@ module.exports = {
     init,
     recordCheck,
     recordMonitorInfo,
+    recordTargetGeo,
     recordMeshHealth,
     removeMonitor,
     isInitialized,

@@ -69,6 +69,60 @@ function shouldEnable() {
 }
 
 /**
+ * Resolve probe geo-data with override precedence:
+ *   explicit env var > dynamic discovery via GeoRegistry > defaults
+ *
+ * If ANY geo env var (IRIS_COUNTRY, IRIS_CITY, IRIS_LAT, IRIS_LON) is set,
+ * all values come from env vars (no partial mixing to avoid confusing mismatches).
+ * IRIS_REGION is always env-only (no geo-IP mapping for deployment regions).
+ * @returns {Promise<{country: string, city: string, asn: string, lat: number, lon: number}>}
+ */
+async function resolveProbeGeo() {
+    const defaults = {
+        country: process.env.IRIS_COUNTRY || "unknown",
+        city: process.env.IRIS_CITY || "unknown",
+        asn: process.env.IRIS_ASN || "unknown",
+        lat: parseFloat(process.env.IRIS_LAT) || 0,
+        lon: parseFloat(process.env.IRIS_LON) || 0,
+    };
+
+    // If any geo env var is explicitly set, use all env vars (no dynamic discovery)
+    const hasEnvOverrides = process.env.IRIS_COUNTRY || process.env.IRIS_CITY ||
+                            process.env.IRIS_LAT || process.env.IRIS_LON;
+
+    if (hasEnvOverrides) {
+        log.info("otel", "Using explicit geo env vars for probe location");
+        return defaults;
+    }
+
+    // Attempt dynamic discovery via the geo subsystem
+    try {
+        const { GeoRegistry } = require("./lib/geo/geo-registry");
+        const geoRegistry = GeoRegistry.getInstance();
+
+        if (!geoRegistry.enabled) {
+            return defaults;
+        }
+
+        const selfGeo = await geoRegistry.discoverSelf();
+        if (selfGeo) {
+            log.info("otel", `Auto-discovered probe geo: ${selfGeo.country}/${selfGeo.city} (${selfGeo.ip})`);
+            return {
+                country: selfGeo.country || defaults.country,
+                city: selfGeo.city || defaults.city,
+                asn: selfGeo.asn || defaults.asn,
+                lat: selfGeo.lat ?? defaults.lat,
+                lon: selfGeo.lon ?? defaults.lon,
+            };
+        }
+    } catch (err) {
+        log.warn("otel", `Probe geo discovery failed, using defaults: ${err.message}`);
+    }
+
+    return defaults;
+}
+
+/**
  * Initialize the OTEL Metrics SDK with resource attributes.
  * Must be called after database is ready.
  * @returns {Promise<void>}
@@ -106,6 +160,9 @@ async function init() {
         log.warn("otel", "Could not read package.json version");
     }
 
+    // Resolve probe geo-data: explicit env vars take precedence over dynamic discovery
+    const probeGeo = await resolveProbeGeo();
+
     // Build resource with all attributes
     // These will appear in Grafana Cloud's auto-generated target_info metric
     const resource = new Resource({
@@ -114,19 +171,19 @@ async function init() {
         [SEMRESATTRS_SERVICE_INSTANCE_ID]: probeId,
         [SEMRESATTRS_SERVICE_VERSION]: version,
 
-        // Iris-specific geo-data (from environment variables)
+        // Iris-specific geo-data (env override > dynamic discovery > "unknown")
         "iris.probe.region": process.env.IRIS_REGION || "unknown",
-        "iris.probe.country": process.env.IRIS_COUNTRY || "unknown",
-        "iris.probe.city": process.env.IRIS_CITY || "unknown",
-        "iris.probe.asn": process.env.IRIS_ASN || "unknown",
+        "iris.probe.country": probeGeo.country,
+        "iris.probe.city": probeGeo.city,
+        "iris.probe.asn": probeGeo.asn,
 
         // Coordinates for Grafana Geomap panel
-        "iris.probe.lat": parseFloat(process.env.IRIS_LAT) || 0,
-        "iris.probe.lon": parseFloat(process.env.IRIS_LON) || 0,
+        "iris.probe.lat": probeGeo.lat,
+        "iris.probe.lon": probeGeo.lon,
     });
 
     log.info("otel", `Initializing OTEL Metrics SDK for probe: ${probeId}`);
-    log.info("otel", `Resource attributes: region=${process.env.IRIS_REGION || "unknown"}, city=${process.env.IRIS_CITY || "unknown"}`);
+    log.info("otel", `Resource attributes: region=${process.env.IRIS_REGION || "unknown"}, country=${probeGeo.country}, city=${probeGeo.city}`);
 
     // Create exporter - try gRPC first, fall back to HTTP
     let exporter;

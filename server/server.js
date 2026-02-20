@@ -235,6 +235,11 @@ let needSetup = false;
     server.entryPage = await Settings.get("entryPage");
     await StatusPage.loadDomainMappingList();
 
+    // Initialize geolocation subsystem (before OTEL so probe self-registration can use it)
+    log.debug("server", "Initializing Geo Registry");
+    const { GeoRegistry } = require("./lib/geo/geo-registry");
+    await GeoRegistry.getInstance().init();
+
     // Initialize new OTEL SDK with resource attributes (requires database for probe ID)
     log.debug("server", "Initializing OTEL SDK");
     const otel = require("./otel");
@@ -1820,6 +1825,16 @@ let needSetup = false;
             }
             irisMetrics.updateActiveMonitors(typeCounts);
         }, 15000);
+
+        // Geo cache cleanup: delete entries older than 30 days (runs daily)
+        if (GeoRegistry.getInstance().enabled) {
+            const { GeoCache } = require("./lib/geo/geo-cache");
+            setInterval(() => {
+                GeoCache.getInstance().cleanup().catch((err) => {
+                    log.debug("server", `Geo cache cleanup error: ${err.message}`);
+                });
+            }, 24 * 60 * 60 * 1000);
+        }
 
         // Put this here. Start background jobs after the db and server is ready to prevent clear up during db migration.
         await initBackgroundJobs();

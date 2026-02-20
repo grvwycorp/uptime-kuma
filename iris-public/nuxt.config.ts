@@ -41,7 +41,7 @@ export default defineNuxtConfig({
         // Public (exposed to client)
         public: {
             statusPollInterval: parseInt(process.env.STATUS_POLL_INTERVAL || "15000"),
-            faroUrl: process.env.FARO_COLLECTOR_URL || "",
+            faroUrl: "",
         },
     },
 
