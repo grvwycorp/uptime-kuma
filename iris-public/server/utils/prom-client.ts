@@ -273,6 +273,16 @@ export async function fetchMonitorStatus(promUrl: string): Promise<StatusResult>
             }
         }
 
+        // Diagnostic: warn when metric count diverges from kuma-state
+        const activeNonGroup = Object.values(masterMonitors)
+            .filter(m => m.type !== "group" && m.active).length;
+        const statusCount = Object.keys(statusMap).length;
+        if (Math.abs(statusCount - activeNonGroup) > 5) {
+            console.warn(
+                `[prom-client] Count divergence: ${statusCount} monitors in metrics vs ${activeNonGroup} active non-group in kuma-state`
+            );
+        }
+
         // Derive group status from children
         deriveGroupStatus(statusMap, masterMonitors);
 

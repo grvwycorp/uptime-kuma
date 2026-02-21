@@ -203,6 +203,20 @@ jobs:
           docker compose -p iris -f deploy/master/docker-compose.yml logs iris-public 2>&1 | tail -30
           # Don't fail deployment if frontend isn't ready yet
 
+      - name: Health check (iris-vm)
+        run: |
+          for i in {1..10}; do
+            if curl -sf http://localhost:8428/health > /dev/null; then
+              echo "VictoriaMetrics is healthy"
+              exit 0
+            fi
+            echo "Waiting for VictoriaMetrics... ($i/10)"
+            sleep 2
+          done
+          echo "Warning: VictoriaMetrics health check failed"
+          docker compose -p iris -f deploy/master/docker-compose.yml logs iris-vm 2>&1 | tail -20
+          # Don't fail deployment if VM isn't ready yet
+
       - name: Cleanup old images
         run: docker image prune -f
 

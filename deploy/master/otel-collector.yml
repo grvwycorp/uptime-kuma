@@ -34,6 +34,7 @@ exporters:
   # Local Prometheus exporter for iris-public
   prometheus:
     endpoint: "0.0.0.0:8889"
+    metric_expiration: 15m
 
   # VictoriaMetrics long-term storage
   prometheusremotewrite/vm:

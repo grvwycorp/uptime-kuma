@@ -56,6 +56,36 @@ const STATUS_PRIORITY: Record<string, number> = {
 };
 
 /**
+ * Recursively collect all leaf (non-group) monitors from a group tree.
+ * Descends into nested subgroups to include their children.
+ * @param groupId - master ID of the group monitor
+ * @param monitors - full monitor map from kuma-state
+ * @returns array of non-group, active child monitors
+ */
+function collectLeafMonitors(
+    groupId: number,
+    monitors: Record<string, MonitorData>,
+): MonitorData[] {
+    const group = monitors[String(groupId)];
+    if (!group) {
+        return [];
+    }
+    const leaves: MonitorData[] = [];
+    for (const childId of group.childrenIDs || []) {
+        const child = monitors[String(childId)];
+        if (!child || !child.active) {
+            continue;
+        }
+        if (child.type === "group") {
+            leaves.push(...collectLeafMonitors(child.id, monitors));
+        } else {
+            leaves.push(child);
+        }
+    }
+    return leaves;
+}
+
+/**
  * Slugify a service name for use as a URL-safe identifier
  * @param name - human-readable service name
  * @returns lowercase hyphenated slug
@@ -121,10 +151,8 @@ export function mapServices(
         .sort((a, b) => (a.weight ?? 0) - (b.weight ?? 0) || a.name.localeCompare(b.name));
 
     const services: PublicService[] = groups.map(group => {
-        // Resolve child monitors
-        const children = (group.childrenIDs || [])
-            .map(id => monitors[String(id)])
-            .filter((m): m is MonitorData => !!m && m.active && m.type !== "group")
+        // Resolve child monitors (recursively includes nested subgroup children)
+        const children = collectLeafMonitors(group.id, monitors)
             .sort((a, b) => (a.weight ?? 0) - (b.weight ?? 0) || a.name.localeCompare(b.name));
 
         const publicMonitors: PublicMonitor[] = children.map(child => {
@@ -177,15 +205,19 @@ export function mapServices(
         };
     });
 
-    // Aggregate monitor health counts across all services
+    // Count ALL active non-group monitors from kuma-state (not just those in services).
+    // This ensures the header total matches the true number of monitored endpoints,
+    // including monitors in nested subgroups or ungrouped monitors.
     let monitorsTotal = 0;
     let monitorsUp = 0;
-    for (const svc of services) {
-        for (const mon of svc.monitors) {
-            monitorsTotal++;
-            if (mon.status === "up") {
-                monitorsUp++;
-            }
+    for (const [id, mon] of Object.entries(monitors)) {
+        if (mon.type === "group" || !mon.active) {
+            continue;
+        }
+        monitorsTotal++;
+        const st = statusMap[id];
+        if (st?.aggregated === "up") {
+            monitorsUp++;
         }
     }
 
