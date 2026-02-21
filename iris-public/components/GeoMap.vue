@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import "leaflet/dist/leaflet.css";
+
 interface Target {
     lat: number;
     lon: number;
@@ -61,7 +63,6 @@ function addMarkers() {
 
 onMounted(async () => {
     const leaflet = await import("leaflet");
-    await import("leaflet/dist/leaflet.css");
     L = leaflet.default || leaflet;
 
     if (!mapContainer.value) {
