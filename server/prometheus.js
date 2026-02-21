@@ -315,8 +315,11 @@ class Prometheus {
                         monitorType: this.monitorLabelValues.monitor_type,
                         status: heartbeat.status,
                         responseTime: typeof heartbeat.ping === "number" ? heartbeat.ping : -1,
-                        // Timing decomposition can be added here when available
-                        // timings: { dns: heartbeat.timing_dns, tcp: heartbeat.timing_tcp, tls: heartbeat.timing_tls },
+                        timings: (heartbeat.timing_dns !== undefined) ? {
+                            dns: heartbeat.timing_dns,
+                            tcp: heartbeat.timing_tcp,
+                            tls: heartbeat.timing_tls,
+                        } : undefined,
                         cert: tlsInfo ? {
                             daysRemaining: tlsInfo.certInfo?.daysRemaining,
                             isValid: tlsInfo.valid === true,

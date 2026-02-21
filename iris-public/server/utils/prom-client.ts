@@ -21,10 +21,21 @@ export interface MonitorStatus {
     probes: Record<string, ProbeStatus>;
 }
 
+export interface TargetGeo {
+    masterId: string;
+    targetIp: string;
+    lat: number;
+    lon: number;
+    country: string;
+    city: string;
+    asn: string;
+}
+
 export interface StatusResult {
     status: Record<string, MonitorStatus>;
     lastUpdated: number;
     checksPerSecond: number | null;
+    targetGeo: TargetGeo[];
 }
 
 interface MetricSample {
@@ -33,7 +44,7 @@ interface MetricSample {
     value: number;
 }
 
-let cachedResult: StatusResult = { status: {}, lastUpdated: 0, checksPerSecond: null };
+let cachedResult: StatusResult = { status: {}, lastUpdated: 0, checksPerSecond: null, targetGeo: [] };
 let cacheTime = 0;
 const CACHE_TTL_MS = 5000;
 
@@ -46,6 +57,7 @@ const METRIC_UP = "monitor_up_ratio";
 const METRIC_STATUS = "monitor_status_ratio";
 const METRIC_RESPONSE_TIME = "monitor_response_time_milliseconds";
 const METRIC_INFO = "monitor_info_ratio";
+const METRIC_TARGET_GEO = "target_geo_info_ratio";
 
 // Priority for worst-status-wins aggregation (lower = worse)
 const STATUS_PRIORITY: Record<string, number> = {
@@ -264,6 +276,43 @@ export async function fetchMonitorStatus(promUrl: string): Promise<StatusResult>
         // Derive group status from children
         deriveGroupStatus(statusMap, masterMonitors);
 
+        // --- Collect target geo data ---
+        const geoSeen = new Set<string>();
+        const targetGeo: TargetGeo[] = [];
+        for (const sample of samples) {
+            if (sample.name !== METRIC_TARGET_GEO) {
+                continue;
+            }
+            const probeLocalId = sample.labels.monitor_id;
+            const probeId = sample.labels.probe_id;
+            if (!probeLocalId || !probeId) {
+                continue;
+            }
+            const masterId = probeLocalToMaster.get(`${probeId}:${probeLocalId}`);
+            if (!masterId) {
+                continue;
+            }
+            const key = `${masterId}:${sample.labels.target_ip}`;
+            if (geoSeen.has(key)) {
+                continue;
+            }
+            geoSeen.add(key);
+            const lat = parseFloat(sample.labels.target_lat);
+            const lon = parseFloat(sample.labels.target_lon);
+            if (isNaN(lat) || isNaN(lon)) {
+                continue;
+            }
+            targetGeo.push({
+                masterId,
+                targetIp: sample.labels.target_ip || "",
+                lat,
+                lon,
+                country: sample.labels.target_country || "",
+                city: sample.labels.target_city || "",
+                asn: sample.labels.target_asn || "",
+            });
+        }
+
         // Compute checks/sec from iris_check_total counter delta
         // OTEL exporter may name it iris_check_total_total or iris_check_total_check_total
         let checkTotal = 0;
@@ -284,7 +333,7 @@ export async function fetchMonitorStatus(promUrl: string): Promise<StatusResult>
         prevCheckTotal = checkTotal;
         prevCheckTime = now;
 
-        cachedResult = { status: statusMap, lastUpdated: Date.now(), checksPerSecond };
+        cachedResult = { status: statusMap, lastUpdated: Date.now(), checksPerSecond, targetGeo };
         cacheTime = now;
         return cachedResult;
     } catch (err) {

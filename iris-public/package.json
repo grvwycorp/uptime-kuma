@@ -12,6 +12,7 @@
     "@grafana/faro-web-sdk": "^1.12.0",
     "@grafana/faro-web-tracing": "^1.12.0",
     "@nuxt/content": "^2.13.4",
+    "leaflet": "^1.9.4",
     "marked": "^14.0.0",
     "nuxt": "^3.14.0",
     "socket.io-client": "^4.7.5",
@@ -19,6 +20,7 @@
     "vue-router": "^4.4.0"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
   }

@@ -6,7 +6,7 @@
  * Each service contains its direct child monitors with live status.
  */
 import type { MonitorData } from "./kuma-state";
-import type { MonitorStatus } from "./prom-client";
+import type { MonitorStatus, TargetGeo } from "./prom-client";
 
 export interface PublicMonitor {
     id: number;
@@ -28,12 +28,24 @@ export interface PublicService {
     monitors: PublicMonitor[];
 }
 
+export interface PublicTarget {
+    lat: number;
+    lon: number;
+    country: string;
+    city: string;
+    asn: string;
+    ip: string;
+    monitorName: string;
+    status: "up" | "down" | "degraded" | "unknown";
+}
+
 export interface PublicStatusData {
     generated_at: string;
     services: PublicService[];
     monitors_total: number;
     monitors_up: number;
     checks_per_second: number | null;
+    targets: PublicTarget[];
 }
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -101,6 +113,7 @@ export function mapServices(
     monitors: Record<string, MonitorData>,
     statusMap: Record<string, MonitorStatus>,
     checksPerSecond: number | null = null,
+    targetGeo: TargetGeo[] = [],
 ): PublicStatusData {
     // Find top-level groups (services)
     const groups = Object.values(monitors)
@@ -176,11 +189,30 @@ export function mapServices(
         }
     }
 
+    // Build target geo list enriched with monitor name and status
+    const targets: PublicTarget[] = targetGeo
+        .map(tg => {
+            const mon = monitors[tg.masterId];
+            const st = statusMap[tg.masterId];
+            return {
+                lat: tg.lat,
+                lon: tg.lon,
+                country: tg.country,
+                city: tg.city,
+                asn: tg.asn,
+                ip: tg.targetIp,
+                monitorName: mon?.name || "Unknown",
+                status: (st?.aggregated || "unknown") as "up" | "down" | "degraded" | "unknown",
+            };
+        })
+        .filter(t => t.lat !== 0 || t.lon !== 0);
+
     return {
         generated_at: new Date().toISOString(),
         services,
         monitors_total: monitorsTotal,
         monitors_up: monitorsUp,
         checks_per_second: checksPerSecond,
+        targets,
     };
 }

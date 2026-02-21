@@ -661,6 +661,35 @@ class Monitor extends BeanModel {
                         });
                     });
 
+                    // --- Timing decomposition capture ---
+                    // Hook socket lifecycle events to measure DNS, TCP, TLS phases
+                    const connTimings = {};
+                    if (!this.proxy_id) {
+                        const targetAgent = this.getUrl()?.protocol === "https:" ? options.httpsAgent : options.httpAgent;
+                        if (targetAgent) {
+                            const origCreateConn = targetAgent.createConnection.bind(targetAgent);
+                            const connStartNs = process.hrtime.bigint();
+                            targetAgent.createConnection = function(opts, oncreate) {
+                                const socket = origCreateConn(opts, oncreate);
+                                if (socket) {
+                                    socket.once("lookup", () => {
+                                        connTimings.dns = Number(process.hrtime.bigint() - connStartNs) / 1e6;
+                                    });
+                                    socket.once("connect", () => {
+                                        const elapsed = Number(process.hrtime.bigint() - connStartNs) / 1e6;
+                                        connTimings.tcp = elapsed - (connTimings.dns || 0);
+                                    });
+                                    socket.once("secureConnect", () => {
+                                        const elapsed = Number(process.hrtime.bigint() - connStartNs) / 1e6;
+                                        connTimings.tls = elapsed - (connTimings.dns || 0) - (connTimings.tcp || 0);
+                                    });
+                                }
+                                targetAgent.createConnection = origCreateConn;
+                                return socket;
+                            };
+                        }
+                    }
+
                     log.debug("monitor", `[${this.name}] Axios Options: ${JSON.stringify(options)}`);
                     log.debug("monitor", `[${this.name}] Axios Request`);
 
@@ -669,6 +698,11 @@ class Monitor extends BeanModel {
 
                     bean.msg = `${res.status} - ${res.statusText}`;
                     bean.ping = dayjs().valueOf() - startTime;
+
+                    // Store timing decomposition on bean for metrics export
+                    bean.timing_dns = connTimings.dns !== undefined ? Math.round(connTimings.dns) : undefined;
+                    bean.timing_tcp = connTimings.tcp !== undefined ? Math.round(connTimings.tcp) : undefined;
+                    bean.timing_tls = connTimings.tls !== undefined ? Math.round(connTimings.tls) : undefined;
 
                     // in the frontend, the save response is only shown if the saveErrorResponse is set
                     if (this.getSaveResponse() && this.getSaveErrorResponse()) {

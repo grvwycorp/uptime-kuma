@@ -21,12 +21,24 @@ interface Service {
     probes_up: number;
 }
 
+interface Target {
+    lat: number;
+    lon: number;
+    country: string;
+    city: string;
+    asn: string;
+    ip: string;
+    monitorName: string;
+    status: "up" | "down" | "degraded" | "unknown";
+}
+
 interface StatusData {
     generated_at: string;
     services: Service[];
     monitors_total: number;
     monitors_up: number;
     checks_per_second: number | null;
+    targets: Target[];
 }
 
 const config = useRuntimeConfig();
@@ -126,6 +138,10 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
             &mdash; trying to answer a simple question:
             <em>how is Sweden doing on the internet today?</em>
         </div>
+
+        <ClientOnly>
+            <GeoMap v-if="data?.targets?.length" :targets="data.targets" />
+        </ClientOnly>
 
         <div v-if="data" class="services">
             <div
