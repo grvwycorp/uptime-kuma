@@ -35,6 +35,12 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
 
+  # VictoriaMetrics long-term storage
+  prometheusremotewrite/vm:
+    endpoint: "http://iris-vm:8428/api/v1/write"
+    tls:
+      insecure: true
+
 service:
   pipelines:
     traces:
@@ -45,7 +51,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug, otlp_http/grafana, prometheus]
+      exporters: [debug, otlp_http/grafana, prometheus, prometheusremotewrite/vm]
 
     logs:
       receivers: [otlp]

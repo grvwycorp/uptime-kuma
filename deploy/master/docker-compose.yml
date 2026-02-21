@@ -80,6 +80,23 @@ services:
     networks:
       - iris-network
 
+  iris-vm:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: iris-vm
+    restart: unless-stopped
+    command:
+      - "-storageDataPath=/storage"
+      - "-retentionPeriod=24"
+      - "-memory.allowedPercent=60"
+      - "-search.latencyOffset=5s"
+    volumes:
+      - iris-vm-data:/storage
+    ports:
+      # Expose to localhost only — no external access needed
+      - "127.0.0.1:8428:8428"
+    networks:
+      - iris-network
+
   iris-sync:
     build:
       context: ../../iris-sync
@@ -178,6 +195,7 @@ volumes:
   iris-web-data:
   iris-db-data:
   iris-sync-data:
+  iris-vm-data:
   iris-caddy-data:
   iris-caddy-config:
 

@@ -34,9 +34,7 @@ export function useColorMode() {
     const resolved = computed(() => resolve(mode.value));
 
     function toggle() {
-        const order: Mode[] = ["dark", "light", "system"];
-        const idx = order.indexOf(mode.value);
-        mode.value = order[(idx + 1) % order.length];
+        mode.value = resolved.value === "dark" ? "light" : "dark";
         if (import.meta.client) {
             localStorage.setItem(STORAGE_KEY, mode.value);
         }
@@ -60,9 +58,8 @@ export function useColorMode() {
     }
 
     const modeLabel = computed(() => {
-        if (mode.value === "light") return "Light mode (click for dark)";
-        if (mode.value === "dark") return "Dark mode (click for system)";
-        return "System theme (click for dark)";
+        if (resolved.value === "light") return "Light mode (click for dark)";
+        return "Dark mode (click for light)";
     });
 
     const modeIcon = computed(() => {
