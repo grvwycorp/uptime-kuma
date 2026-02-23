@@ -57,6 +57,7 @@ jobs:
             echo "rebuild_web=true" >> $GITHUB_OUTPUT
             echo "rebuild_public=true" >> $GITHUB_OUTPUT
             echo "rebuild_sync=true" >> $GITHUB_OUTPUT
+            echo "rebuild_bgp=true" >> $GITHUB_OUTPUT
             echo "Manual dispatch — rebuilding all services"
             exit 0
           fi
@@ -66,6 +67,7 @@ jobs:
             echo "rebuild_web=true" >> $GITHUB_OUTPUT
             echo "rebuild_public=true" >> $GITHUB_OUTPUT
             echo "rebuild_sync=true" >> $GITHUB_OUTPUT
+            echo "rebuild_bgp=true" >> $GITHUB_OUTPUT
             echo "No previous SHA — rebuilding all services"
             exit 0
           fi
@@ -102,6 +104,15 @@ jobs:
             echo "→ iris-sync: no changes, skipping build"
           fi
 
+          # iris-bgp: BGP alerter bridge
+          if echo "$CHANGED" | grep -qE '^iris-bgp/'; then
+            echo "rebuild_bgp=true" >> $GITHUB_OUTPUT
+            echo "→ iris-bgp: rebuild needed"
+          else
+            echo "rebuild_bgp=false" >> $GITHUB_OUTPUT
+            echo "→ iris-bgp: no changes, skipping build"
+          fi
+
       - name: Create secrets directory
         run: mkdir -p deploy/master/secrets
 
@@ -129,6 +140,7 @@ jobs:
           REBUILD_WEB: ${{ steps.changes.outputs.rebuild_web }}
           REBUILD_PUBLIC: ${{ steps.changes.outputs.rebuild_public }}
           REBUILD_SYNC: ${{ steps.changes.outputs.rebuild_sync }}
+          REBUILD_BGP: ${{ steps.changes.outputs.rebuild_bgp }}
         run: |
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
@@ -152,6 +164,12 @@ jobs:
             docker compose -p iris build $BUILD_ARGS iris-sync
           else
             echo "=== Skipping iris-sync build (no changes) ==="
+          fi
+          if [ "$REBUILD_BGP" == "true" ]; then
+            echo "=== Building iris-bgp-bridge ==="
+            docker compose -p iris build $BUILD_ARGS iris-bgp-bridge
+          else
+            echo "=== Skipping iris-bgp-bridge build (no changes) ==="
           fi
           docker compose -p iris up -d --force-recreate --remove-orphans
           # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
@@ -202,6 +220,20 @@ jobs:
           echo "Warning: iris-public health check failed"
           docker compose -p iris -f deploy/master/docker-compose.yml logs iris-public 2>&1 | tail -30
           # Don't fail deployment if frontend isn't ready yet
+
+      - name: Health check (iris-bgp)
+        run: |
+          for i in {1..15}; do
+            if curl -sf http://localhost:8011/status > /dev/null; then
+              echo "BGPalerter is healthy"
+              exit 0
+            fi
+            echo "Waiting for BGPalerter... ($i/15)"
+            sleep 2
+          done
+          echo "Warning: BGPalerter health check failed"
+          docker compose -p iris -f deploy/master/docker-compose.yml logs iris-bgp 2>&1 | tail -20
+          # Don't fail deployment if BGPalerter isn't ready yet
 
       - name: Health check (iris-vm)
         run: |

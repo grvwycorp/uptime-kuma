@@ -1,0 +1,15 @@
+{
+    "name": "iris-bgp-bridge",
+    "version": "1.0.0",
+    "description": "BGPalerter webhook to OTEL metrics bridge for Iris",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "@opentelemetry/exporter-metrics-otlp-grpc": "^0.57.0",
+        "@opentelemetry/resources": "^1.30.0",
+        "@opentelemetry/sdk-metrics": "^1.30.0",
+        "express": "^4.21.0"
+    }
+}

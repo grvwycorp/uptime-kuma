@@ -1,0 +1,300 @@
+# BGPalerter prefixes.yml — Swedish Digital Infrastructure
+#
+# Monitors BGP routing for critical Swedish internet infrastructure.
+# Uses ASN-based monitoring (auto-discovers all announced prefixes per ASN)
+# plus specific prefix entries for DNS roots, IX peering LANs, and government networks.
+#
+# Generated: 2026-02-23
+# Sources: RIPE NCC, PeeringDB, bgp.he.net, BGPView, service-discovery RECON docs
+
+# =============================================================================
+# ASN-BASED MONITORING (auto-discovers all prefixes per ASN)
+# =============================================================================
+
+options:
+  monitorASns:
+
+    # -------------------------------------------------------------------------
+    # Swedish ISPs
+    # -------------------------------------------------------------------------
+    3301:                              # Telia Company AB — largest Swedish ISP
+      group: swedish-isp
+    1257:                              # Tele2 Sverige AB — #2 ISP (SWIPNET legacy, includes Com Hem / Comviq)
+      group: swedish-isp
+    8473:                              # Bahnhof AB — independent ISP + hosting, privacy-focused
+      group: swedish-isp
+    8434:                              # Telenor Sverige AB — Swedish mobile/broadband
+      group: swedish-isp
+    29518:                             # Bredband2 AB — #4 by Swedish eyeballs
+      group: swedish-isp
+    44034:                             # Hi3G Access AB — Tre (3 Sverige), 4th mobile operator
+      group: swedish-isp
+
+    # -------------------------------------------------------------------------
+    # Swedish Infrastructure / Backbone
+    # -------------------------------------------------------------------------
+    1299:                              # Arelion (ex-Telia Carrier) — Tier 1 global backbone, Swedish-based
+      group: swedish-infra
+    1653:                              # SUNET (Vetenskapsradet) — Swedish University Network
+      group: swedish-infra
+    2603:                              # NORDUnet — Nordic research and education backbone
+      group: swedish-infra
+    12552:                             # GlobalConnect AB (ex-IP-Only) — major Swedish fiber/transit
+      group: swedish-infra
+    216025:                            # Mullvad VPN AB — Swedish privacy VPN (own AS since 2023)
+      group: swedish-infra
+    39351:                             # 31173 Services AB — Mullvad parent/transit company
+      group: swedish-infra
+
+    # -------------------------------------------------------------------------
+    # DNS Infrastructure
+    # -------------------------------------------------------------------------
+    8674:                              # Netnod AB — IX operator, 6 IXP locations in Sweden
+      group: dns-infra
+    29216:                             # Netnod AB (I-root) — i.root-servers.net anycast
+      group: dns-infra
+    197564:                            # Internetstiftelsen (IIS) — .se/.nu TLD registry
+      group: dns-infra
+
+    # -------------------------------------------------------------------------
+    # Swedish Hosting Providers
+    # -------------------------------------------------------------------------
+    42708:                             # GleSYS AB — Swedish hosting
+      group: swedish-hosting
+    41001:                             # Safespring AB — Swedish sovereign cloud (SUNET-affiliated)
+      group: swedish-hosting
+    39570:                             # Loopia AB — Swedish web hosting
+      group: swedish-hosting
+    35041:                             # Binero AB — Swedish hosting/cloud, Stockholm
+      group: swedish-hosting
+
+    # -------------------------------------------------------------------------
+    # Swedish Government Networks
+    # -------------------------------------------------------------------------
+    2799:                              # Polismyndigheten — Swedish Police (147.186.0.0/16 LAWNET)
+      group: swedish-gov
+    39658:                             # Statistics Sweden / SCB (193.180.124.0/24)
+      group: swedish-gov
+    15991:                             # Skatteverket — Swedish Tax Agency (137.61.0.0/16)
+      group: swedish-gov
+    205916:                            # Freja eID Group AB — government-approved eID (185.202.64.0/22)
+      group: swedish-gov
+
+    # -------------------------------------------------------------------------
+    # Swedish Financial Infrastructure
+    # -------------------------------------------------------------------------
+    59807:                             # Swedbank AB — Sweden's largest bank by customers
+      group: swedish-finance
+    44320:                             # SEB (Skandinaviska Enskilda Banken AB)
+      group: swedish-finance
+    201271:                            # Nordea Bank Abp — largest Nordic bank by assets
+      group: swedish-finance
+    31574:                             # Bankgirocentralen BGC AB — payment clearing (P27 platform)
+      group: swedish-finance
+
+
+# =============================================================================
+# SPECIFIC PREFIX MONITORING
+# For critical infrastructure where exact prefix + origin AS is known.
+# Catches hijacks, route leaks, and origin violations.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Netnod IX Peering LANs
+#
+# These prefixes should NEVER appear in the global BGP routing table.
+# Any announcement is a route leak. Netnod operates Green/Blue dual-fabric
+# architecture at larger sites.
+# -----------------------------------------------------------------------------
+
+194.68.123.0/24:
+  description: Netnod IX Stockholm GREEN peering LAN
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+194.68.128.0/24:
+  description: Netnod IX Stockholm BLUE peering LAN
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+194.68.130.0/24:
+  description: Netnod IX Gothenburg peering LAN
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+212.237.193.0/24:
+  description: Netnod IX Copenhagen/Malmo GREEN peering LAN (cross-border DK/SE)
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+212.237.192.0/24:
+  description: Netnod IX Copenhagen/Malmo BLUE peering LAN (cross-border DK/SE)
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+194.68.133.0/24:
+  description: Netnod IX Sundsvall peering LAN
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+194.68.131.64/26:
+  description: Netnod IX Lulea peering LAN (note /26 not /24)
+  asn: [8674]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+# -----------------------------------------------------------------------------
+# I-root DNS Server (operated by Netnod, AS29216)
+# One of 13 DNS root servers. Anycast from multiple global locations.
+# -----------------------------------------------------------------------------
+
+192.36.148.0/24:
+  description: i.root-servers.net IPv4 anycast (Netnod)
+  asn: [29216]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+2001:7fe::/32:
+  description: i.root-servers.net IPv6 anycast (Netnod)
+  asn: [29216]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+# -----------------------------------------------------------------------------
+# Internetstiftelsen / IIS — .se and .nu TLD DNS Infrastructure
+# Operates authoritative DNS for Sweden's country-code TLDs.
+# -----------------------------------------------------------------------------
+
+45.155.96.0/22:
+  description: Internetstiftelsen .se/.nu DNS anycast infrastructure
+  asn: [197564]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+91.226.36.0/23:
+  description: Internetstiftelsen core allocation
+  asn: [197564]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+213.108.24.0/24:
+  description: Internetstiftelsen DNS infrastructure
+  asn: [197564]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+213.108.25.0/24:
+  description: Internetstiftelsen DNS infrastructure
+  asn: [197564]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+2001:67c:124c::/48:
+  description: Internetstiftelsen .se/.nu IPv6 anycast DNS
+  asn: [197564]
+  ignoreMorespecifics: false
+  group: dns-infra
+
+# -----------------------------------------------------------------------------
+# SUNET — Swedish University Network backbone aggregates
+# National research and education backbone, operated by Vetenskapsradet.
+# -----------------------------------------------------------------------------
+
+130.242.0.0/15:
+  description: SUNET backbone aggregate
+  asn: [1653]
+  ignoreMorespecifics: true
+  group: swedish-infra
+
+2001:6b0::/32:
+  description: SUNET IPv6 backbone
+  asn: [1653]
+  ignoreMorespecifics: true
+  group: swedish-infra
+
+# -----------------------------------------------------------------------------
+# NORDUnet — Nordic Research and Education backbone
+# Interconnects Nordic NRENs (SUNET, UNINETT, DeIC, Funet, RHnet).
+# -----------------------------------------------------------------------------
+
+109.105.96.0/19:
+  description: NORDUnet backbone aggregate
+  asn: [2603]
+  ignoreMorespecifics: true
+  group: swedish-infra
+
+2001:948::/32:
+  description: NORDUnet IPv6 backbone
+  asn: [2603]
+  ignoreMorespecifics: true
+  group: swedish-infra
+
+# -----------------------------------------------------------------------------
+# Mullvad VPN — Swedish privacy infrastructure
+# Only 2 prefixes originated by Mullvad's own AS. Both RPKI ROA valid.
+# -----------------------------------------------------------------------------
+
+45.92.0.0/24:
+  description: Mullvad VPN AB IPv4 (RPKI ROA valid)
+  asn: [216025]
+  ignoreMorespecifics: false
+  group: swedish-infra
+
+2a10:7402::/32:
+  description: Mullvad VPN AB IPv6 (RPKI ROA valid)
+  asn: [216025]
+  ignoreMorespecifics: false
+  group: swedish-infra
+
+# -----------------------------------------------------------------------------
+# Swedish Government Critical Prefixes
+# Sovereign networks operated by government agencies.
+# -----------------------------------------------------------------------------
+
+147.186.0.0/16:
+  description: LAWNET — Polismyndigheten (Swedish Police Authority, legacy RIPE /16)
+  asn: [2799]
+  ignoreMorespecifics: true
+  group: swedish-gov
+
+137.61.0.0/16:
+  description: SVSKT-3 — Skatteverket (Swedish Tax Agency)
+  asn: [15991]
+  ignoreMorespecifics: true
+  group: swedish-gov
+
+185.202.64.0/22:
+  description: Freja eID production — government-approved electronic ID
+  asn: [205916]
+  ignoreMorespecifics: false
+  group: swedish-gov
+
+185.198.4.0/24:
+  description: BankID production API — 8.6M users, critical auth infrastructure
+  asn: [8473, 12552]
+  ignoreMorespecifics: false
+  group: swedish-finance
+
+164.10.0.0/16:
+  description: Swedbank SE — largest Swedish bank by customers
+  asn: [59807]
+  ignoreMorespecifics: true
+  group: swedish-finance
+
+129.178.0.0/16:
+  description: SEBNET — SEB (Skandinaviska Enskilda Banken)
+  asn: [44320]
+  ignoreMorespecifics: true
+  group: swedish-finance
+
+193.180.60.0/23:
+  description: SE-RIKSB — Sveriges Riksbank RIX payment settlement system
+  asn: []
+  ignoreMorespecifics: false
+  group: swedish-finance
