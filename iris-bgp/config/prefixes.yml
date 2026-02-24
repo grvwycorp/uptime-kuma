@@ -295,6 +295,6 @@ options:
 
 193.180.60.0/23:
   description: SE-RIKSB — Sveriges Riksbank RIX payment settlement system
-  asn: []
+  asn: [29518]
   ignoreMorespecifics: false
   group: swedish-finance
