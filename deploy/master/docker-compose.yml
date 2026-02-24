@@ -168,37 +168,6 @@ services:
     networks:
       - iris-network
 
-  # BGP routing monitor — watches Swedish ASNs/prefixes via RIPE RIS Live
-  iris-bgp:
-    image: nttgin/bgpalerter:latest
-    container_name: iris-bgp
-    restart: unless-stopped
-    volumes:
-      - ../../iris-bgp/config/bgpalerter.yml:/opt/bgpalerter/config.yml:ro
-      - ../../iris-bgp/config/prefixes.yml:/opt/bgpalerter/prefixes.yml:ro
-      - iris-bgp-data:/opt/bgpalerter/volume
-    ports:
-      # Pull API + health check (localhost only)
-      - "127.0.0.1:8011:8011"
-    networks:
-      - iris-network
-
-  # Converts BGPalerter webhook alerts into OTEL metrics
-  iris-bgp-bridge:
-    build:
-      context: ../../iris-bgp/bridge
-      dockerfile: Dockerfile
-    container_name: iris-bgp-bridge
-    restart: unless-stopped
-    environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://iris-otel:4317
-      BGP_ALERTER_STATUS_URL: http://iris-bgp:8011/status
-    depends_on:
-      - iris-bgp
-      - iris-otel
-    networks:
-      - iris-network
-
   iris-caddy:
     image: caddy:2-alpine
     container_name: iris-caddy
@@ -227,7 +196,6 @@ volumes:
   iris-db-data:
   iris-sync-data:
   iris-vm-data:
-  iris-bgp-data:
   iris-caddy-data:
   iris-caddy-config:
 
