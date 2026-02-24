@@ -35,6 +35,10 @@ services:
   # BGP monitoring (profile: bgp) — only activated on probes with enough RAM
   # Activate via: COMPOSE_PROFILES=bgp docker compose up -d
   # Currently: labbmartin only (6GB RAM)
+  #
+  # All containers use host network mode because probes run in unprivileged
+  # LXC containers where bridge networks fail with sysctl permission errors.
+  # Services communicate via localhost (bgpalerter :8011, bridge :8080).
   # ==========================================================================
 
   # BGPalerter — watches Swedish ASNs/prefixes via RIPE RIS Live WebSocket
@@ -48,11 +52,7 @@ services:
       - ../../iris-bgp/config/bgpalerter.yml:/opt/bgpalerter/config.yml:ro
       - ../../iris-bgp/config/prefixes.yml:/opt/bgpalerter/prefixes.yml:ro
       - iris-bgp-data:/opt/bgpalerter/volume
-    ports:
-      # Pull API + health check (localhost only)
-      - "127.0.0.1:8011:8011"
-    networks:
-      - bgp-network
+    network_mode: host
 
   # Converts BGPalerter webhook alerts into OTEL metrics, pushes to master collector
   iris-bgp-bridge:
@@ -65,16 +65,10 @@ services:
     environment:
       # Push OTLP gRPC to master's collector via Tailscale IP
       OTEL_EXPORTER_OTLP_ENDPOINT: http://${IRIS_MASTER_IP}:4317
-      BGP_ALERTER_STATUS_URL: http://iris-bgp:8011/status
-    depends_on:
-      - iris-bgp
-    networks:
-      - bgp-network
+      # localhost because all containers share host network
+      BGP_ALERTER_STATUS_URL: http://localhost:8011/status
+    network_mode: host
 
 volumes:
   iris-probe-data:
   iris-bgp-data:
-
-networks:
-  bgp-network:
-    driver: bridge

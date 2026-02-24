@@ -88,7 +88,7 @@ reports:
         default: '{"channel": "${channel}", "summary": "${summary}", "data": {"type": "${type}", "prefix": "${prefix}", "asn": "${asn}", "newprefix": "${newprefix}", "neworigin": "${neworigin}", "description": "${description}", "peers": "${peers}", "earliest": "${earliest}", "latest": "${latest}"}}'
       headers: {}
       hooks:
-        default: http://iris-bgp-bridge:8080/alert
+        default: http://localhost:8080/alert
 
   # Pull API for health checks and debugging
   - file: reportPullAPI
