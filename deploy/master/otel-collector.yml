@@ -10,6 +10,26 @@ receivers:
   # with job="unknown_service:node" and high-cardinality labels.
   # All metrics now flow through OTLP push from probes (job="iris-probe").
 
+  # Collect Docker container logs from all containers on this host.
+  # Parses the Docker JSON log format and extracts body/stream/timestamp.
+  filelog/docker:
+    include:
+      - /var/lib/docker/containers/*/*.log
+    include_file_path: true
+    include_file_name: false
+    start_at: end
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout: '%Y-%m-%dT%H:%M:%S.%fZ'
+      - type: move
+        from: attributes.log
+        to: body
+      - type: move
+        from: attributes.stream
+        to: attributes["log.iostream"]
+
 processors:
   batch:
     timeout: 10s
@@ -19,6 +39,13 @@ processors:
     check_interval: 1s
     limit_mib: 1024
     spike_limit_mib: 248
+
+  # Tag filelog-sourced logs with the host so they're distinguishable in Grafana
+  resource/master:
+    attributes:
+      - action: upsert
+        key: host.name
+        value: master01
 
 exporters:
   # Debug logging (useful for troubleshooting)
@@ -55,9 +82,9 @@ service:
       exporters: [debug, otlp_http/grafana, prometheus, prometheusremotewrite/vm]
 
     logs:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]
+      receivers: [otlp, filelog/docker]
+      processors: [memory_limiter, resource/master, batch]
+      exporters: [debug, otlp_http/grafana]
 
   telemetry:
     logs:

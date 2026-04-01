@@ -413,13 +413,21 @@ func (m *Monitor) ComputeHash() string {
 
 // ToKumaPayload converts the Monitor to the format expected by Uptime Kuma's Socket.IO API.
 func (m *Monitor) ToKumaPayload() map[string]interface{} {
+	// Clamp retryInterval to minimum 1: the probe's validate() rejects values < 1,
+	// but the master DB may store 0 (old default) for monitors created before this
+	// field was enforced. Sending 0 causes every such monitor to fail on add/edit.
+	retryInterval := m.RetryInterval
+	if retryInterval < 1 {
+		retryInterval = 1
+	}
+
 	payload := map[string]interface{}{
 		"name":           m.Name,
 		"type":           m.Type,
 		"active":         m.Active == 1,
 		"interval":       m.Interval,
 		"maxretries":     m.MaxRetries,
-		"retryInterval":  m.RetryInterval,
+		"retryInterval":  retryInterval,
 		"resendInterval": m.ResendInterval,
 		"weight":         m.Weight,
 	}

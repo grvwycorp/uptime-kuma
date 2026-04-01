@@ -62,6 +62,7 @@ services:
     container_name: iris-otel
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    user: "0"  # Root required to read /var/lib/docker/containers log files
     environment:
       # Credentials to scrape /metrics from iris-web (same as admin user)
       IRIS_METRICS_USER: ${IRIS_MASTER_USER:-admin}
@@ -70,6 +71,8 @@ services:
       GRAFANA_OTLP_HEADERS: ${GRAFANA_OTLP_HEADERS:-}
     volumes:
       - ./otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+      # Mount Docker log files so filelog/docker receiver can collect container logs
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     ports:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
