@@ -75,8 +75,7 @@ definePageMeta({ layout: "docs" });
 
 import type { MonitorData } from "~/server/utils/kuma-state";
 
-const { monitors, loading } = useMonitors();
-const { status, lastUpdated } = useStatus();
+const { monitors, loading, status, lastUpdated } = usePublicCatalog();
 
 const topLevelGroups = computed(() => {
     return Object.values(monitors.value)

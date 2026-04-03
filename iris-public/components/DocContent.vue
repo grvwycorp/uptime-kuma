@@ -12,7 +12,7 @@
                         <span v-if="i > 0" class="breadcrumb-sep">/</span>
                         <NuxtLink
                             v-if="i < breadcrumbs.length - 1"
-                            :to="`/catalog/${crumb.id}`"
+                            :to="`/docs/${crumb.id}`"
                             class="breadcrumb-link"
                         >{{ crumb.name }}</NuxtLink>
                         <span v-else class="breadcrumb-current">{{ crumb.name }}</span>

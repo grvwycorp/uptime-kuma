@@ -7,46 +7,8 @@
  */
 import type { MonitorData } from "./kuma-state";
 import type { MonitorStatus, TargetGeo } from "./prom-client";
-
-export interface PublicMonitor {
-    id: number;
-    name: string;
-    type: string;
-    status: "up" | "down" | "degraded" | "unknown";
-    response_time: number | null;
-    uptime_24h: number | null;
-    uptime_7d: number | null;
-    uptime_30d: number | null;
-}
-
-export interface PublicService {
-    name: string;
-    slug: string;
-    overall_status: "up" | "down" | "degraded" | "unknown";
-    probe_count: number;
-    probes_up: number;
-    monitors: PublicMonitor[];
-}
-
-export interface PublicTarget {
-    lat: number;
-    lon: number;
-    country: string;
-    city: string;
-    asn: string;
-    ip: string;
-    monitorName: string;
-    status: "up" | "down" | "degraded" | "unknown";
-}
-
-export interface PublicStatusData {
-    generated_at: string;
-    services: PublicService[];
-    monitors_total: number;
-    monitors_up: number;
-    checks_per_second: number | null;
-    targets: PublicTarget[];
-}
+import type { PublicMonitorSummary, PublicProbeSummary, PublicServiceSummary, PublicStatusData, PublicTarget } from "~/types/public";
+import { getDescriptionExcerpt, getMonitorEndpoint, getWhyMonitored } from "./public-monitor";
 
 const STATUS_PRIORITY: Record<string, number> = {
     down: 0,
@@ -114,6 +76,37 @@ function averageResponseTime(monitorStatus: MonitorStatus | undefined): number |
     return Math.round(sum / probes.length);
 }
 
+function probeOverallStatus(upMonitors: number, totalMonitors: number): "up" | "down" | "degraded" | "unknown" {
+    if (totalMonitors === 0) {
+        return "unknown";
+    }
+    if (upMonitors === totalMonitors) {
+        return "up";
+    }
+    if (upMonitors === 0) {
+        return "down";
+    }
+    return "degraded";
+}
+
+function resolveServiceDescription(group: MonitorData, children: MonitorData[]): string | null {
+    if (group.description) {
+        return getDescriptionExcerpt(group.description);
+    }
+
+    const fallback = children.find((child) => child.description);
+    return getDescriptionExcerpt(fallback?.description);
+}
+
+function resolveWhyMonitored(group: MonitorData, children: MonitorData[]): string | null {
+    if (group.description) {
+        return getWhyMonitored(group.description);
+    }
+
+    const fallback = children.find((child) => child.description);
+    return getWhyMonitored(fallback?.description);
+}
+
 /**
  * Compute worst-status-wins across a list of statuses
  * @param statuses - array of status strings
@@ -150,12 +143,12 @@ export function mapServices(
         .filter(m => m.type === "group" && m.parent === null && m.active)
         .sort((a, b) => (a.weight ?? 0) - (b.weight ?? 0) || a.name.localeCompare(b.name));
 
-    const services: PublicService[] = groups.map(group => {
+    const services: PublicServiceSummary[] = groups.map(group => {
         // Resolve child monitors (recursively includes nested subgroup children)
         const children = collectLeafMonitors(group.id, monitors)
             .sort((a, b) => (a.weight ?? 0) - (b.weight ?? 0) || a.name.localeCompare(b.name));
 
-        const publicMonitors: PublicMonitor[] = children.map(child => {
+        const publicMonitors: PublicMonitorSummary[] = children.map(child => {
             const st = statusMap[String(child.id)];
             return {
                 id: child.id,
@@ -166,6 +159,8 @@ export function mapServices(
                 uptime_24h: null,
                 uptime_7d: null,
                 uptime_30d: null,
+                endpoint: getMonitorEndpoint(child),
+                description_excerpt: getDescriptionExcerpt(child.description),
             };
         });
 
@@ -191,16 +186,40 @@ export function mapServices(
                 }
             }
         }
-        const probeCount = probeUpCounts.size;
-        const probesUp = Array.from(probeUpCounts.values())
-            .filter(c => c.up === c.total).length;
+        const probes: PublicProbeSummary[] = Array.from(probeUpCounts.entries())
+            .map(([probeId, counts]) => {
+                const responseTimes = children
+                    .map((child) => statusMap[String(child.id)]?.probes?.[probeId]?.responseTime ?? 0)
+                    .filter((responseTime) => responseTime > 0);
+
+                const avgResponseTime = responseTimes.length > 0
+                    ? Math.round(responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length)
+                    : null;
+
+                return {
+                    probe_id: probeId,
+                    up_monitors: counts.up,
+                    total_monitors: counts.total,
+                    avg_response_time: avgResponseTime,
+                    overall_status: probeOverallStatus(counts.up, counts.total),
+                };
+            })
+            .sort((a, b) => a.probe_id.localeCompare(b.probe_id));
+
+        const probeCount = probes.length;
+        const probesUp = probes.filter((probe) => probe.overall_status === "up").length;
 
         return {
+            id: group.id,
             name: group.name,
             slug: slugify(group.name),
+            docs_path: `/docs/${group.id}`,
             overall_status: overall,
+            description_excerpt: resolveServiceDescription(group, children),
+            why_monitored: resolveWhyMonitored(group, children),
             probe_count: probeCount,
             probes_up: probesUp,
+            probes,
             monitors: publicMonitors,
         };
     });

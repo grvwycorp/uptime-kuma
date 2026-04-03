@@ -1,7 +1,7 @@
 /**
  * Route-aware HTTP Basic Auth middleware.
- * Protects /docs/* and /api/* routes.
- * Public routes: /, /legal, /api/health, /api/public/*, static assets.
+ * Protects private /api/* routes.
+ * Public routes: /, /legal, /docs/*, /api/health, /api/public/*, static assets.
  */
 
 const PUBLIC_API_PREFIXES = ["/api/health", "/api/public/"];
@@ -16,11 +16,11 @@ function isProtected(path: string): boolean {
     if (PUBLIC_API_PREFIXES.some(p => path.startsWith(p))) {
         return false;
     }
-    // Protected: /docs/* and /api/*
-    if (path.startsWith("/docs") || path.startsWith("/api/")) {
+    // Protected: private /api/* only
+    if (path.startsWith("/api/")) {
         return true;
     }
-    // Everything else is public (/, /legal, /_nuxt/*, static assets)
+    // Everything else is public (/, /docs/*, /legal, /_nuxt/*, static assets)
     return false;
 }
 

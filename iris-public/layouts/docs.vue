@@ -1,13 +1,12 @@
 <template>
     <div class="connection-banner" v-if="!connected && !loading">
-        Disconnected from Uptime Kuma &mdash; data may be stale
+        Disconnected from Iris catalog feed &mdash; data may be stale
     </div>
     <slot />
 </template>
 
 <script setup lang="ts">
-const { connected, loading } = useMonitors();
-const { status } = useStatus();
+const { connected, loading, status } = usePublicCatalog();
 
 const fleetSummary = computed(() => {
     const entries = Object.values(status.value);

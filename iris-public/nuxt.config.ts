@@ -35,6 +35,7 @@ export default defineNuxtConfig({
         kumaUsername: process.env.KUMA_USERNAME || "admin",
         kumaPassword: process.env.KUMA_PASSWORD || "",
         otelPromUrl: process.env.OTEL_PROM_URL || "http://localhost:8889/metrics",
+        vmQueryUrl: process.env.VM_QUERY_URL || "http://localhost:8428",
         authUsername: process.env.AUTH_USERNAME || "admin",
         authPassword: process.env.AUTH_PASSWORD || "changeme",
 

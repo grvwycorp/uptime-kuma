@@ -52,8 +52,7 @@ import type { MonitorData } from "~/server/utils/kuma-state";
 
 const route = useRoute();
 const router = useRouter();
-const { monitors, loading } = useMonitors();
-const { status, lastUpdated } = useStatus();
+const { monitors, loading, status, lastUpdated } = usePublicCatalog();
 
 // Selected monitor ID from route
 const selectedId = computed<number | null>(() => {
@@ -104,14 +103,6 @@ const rightPanelMonitors = computed<MonitorData[]>(() => {
 // Mobile drawer state
 const showTree = ref(false);
 const showStatus = ref(false);
-
-/**
- * Navigate to a monitor's catalog page
- * @param id - monitor ID
- */
-function selectMonitor(id: number) {
-    router.push(`/docs/${id}`);
-}
 
 /**
  * Navigate and close the mobile tree drawer

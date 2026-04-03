@@ -1,56 +1,74 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from "vue";
+import type { PublicRecentData, PublicServiceSummary, PublicStatusData, ServiceRecentItem } from "~/types/public";
+
 definePageMeta({ layout: "public" });
 
-interface Monitor {
-    id: number;
-    name: string;
-    type: string;
-    status: "up" | "down" | "degraded" | "unknown";
-    response_time: number | null;
-    uptime_24h: number | null;
-    uptime_7d: number | null;
-    uptime_30d: number | null;
-}
+type ServiceFilter = "all" | "degraded" | "down" | "recovered";
 
-interface Service {
-    name: string;
-    slug: string;
-    monitors: Monitor[];
-    overall_status: "up" | "degraded" | "down" | "unknown";
-    probe_count: number;
-    probes_up: number;
-}
-
-interface Target {
-    lat: number;
-    lon: number;
-    country: string;
-    city: string;
-    asn: string;
-    ip: string;
-    monitorName: string;
-    status: "up" | "down" | "degraded" | "unknown";
-}
-
-interface StatusData {
-    generated_at: string;
-    services: Service[];
-    monitors_total: number;
-    monitors_up: number;
-    checks_per_second: number | null;
-    targets: Target[];
-}
+const STATUS_LABELS: Record<PublicServiceSummary["overall_status"], string> = {
+    up: "Healthy",
+    degraded: "Degraded",
+    down: "Down",
+    unknown: "Unknown",
+};
 
 const config = useRuntimeConfig();
-const { data, refresh } = await useFetch<StatusData>("/api/public/status");
+const statusPollInterval = config.public.statusPollInterval as number;
+const recentPollInterval = 60_000;
+
+const { data: statusData, refresh: refreshStatus } = await useFetch<PublicStatusData>("/api/public/status");
+const { data: recentData, refresh: refreshRecent } = await useFetch<PublicRecentData>("/api/public/recent");
 const { toggle, modeLabel, modeIcon } = useColorMode();
 
-onMounted(() => {
-    const interval = setInterval(refresh, config.public.statusPollInterval as number);
-    onUnmounted(() => clearInterval(interval));
+const expandedSlug = ref<string | null>(null);
+const highlightedSlug = ref<string | null>(null);
+const activeFilter = ref<ServiceFilter>("all");
+const rawSearch = ref("");
+const debouncedSearch = ref("");
+const serviceRefs = shallowRef<Record<string, HTMLElement | null>>({});
+
+let searchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
+let highlightResetHandle: ReturnType<typeof setTimeout> | null = null;
+let statusRefreshHandle: ReturnType<typeof setInterval> | null = null;
+let recentRefreshHandle: ReturnType<typeof setInterval> | null = null;
+
+function normalizeSearchValue(value: string): string {
+    return value
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+}
+
+watch(rawSearch, (value) => {
+    if (searchDebounceHandle) {
+        clearTimeout(searchDebounceHandle);
+    }
+    searchDebounceHandle = setTimeout(() => {
+        debouncedSearch.value = normalizeSearchValue(value);
+    }, 120);
 });
 
-const expandedSlug = ref<string | null>(null);
+onMounted(() => {
+    statusRefreshHandle = setInterval(refreshStatus, statusPollInterval);
+    recentRefreshHandle = setInterval(refreshRecent, recentPollInterval);
+});
+
+onUnmounted(() => {
+    if (statusRefreshHandle) {
+        clearInterval(statusRefreshHandle);
+    }
+    if (recentRefreshHandle) {
+        clearInterval(recentRefreshHandle);
+    }
+    if (searchDebounceHandle) {
+        clearTimeout(searchDebounceHandle);
+    }
+    if (highlightResetHandle) {
+        clearTimeout(highlightResetHandle);
+    }
+});
 
 function toggleCard(slug: string) {
     expandedSlug.value = expandedSlug.value === slug ? null : slug;
@@ -60,64 +78,114 @@ function isExpanded(slug: string): boolean {
     return expandedSlug.value === slug;
 }
 
-function statusColor(status: string): string {
+function setServiceRef(slug: string, el: Element | ComponentPublicInstance | null) {
+    serviceRefs.value[slug] = el instanceof HTMLElement ? el : null;
+}
+
+function statusColor(status: PublicServiceSummary["overall_status"]): string {
     if (status === "up") return "var(--color-status-up)";
     if (status === "degraded") return "var(--color-status-degraded)";
     if (status === "unknown") return "var(--color-status-unknown)";
     return "var(--color-status-down)";
 }
 
-function borderColor(status: string): string {
+function borderColor(status: PublicServiceSummary["overall_status"]): string {
     if (status === "up") return "var(--color-status-up-border)";
     if (status === "degraded") return "var(--color-status-degraded-border)";
     if (status === "unknown") return "var(--color-status-unknown-border)";
     return "var(--color-status-down-border)";
 }
 
-function borderColorHover(status: string): string {
+function borderColorHover(status: PublicServiceSummary["overall_status"]): string {
     if (status === "up") return "var(--color-status-up-border-hover)";
     if (status === "degraded") return "var(--color-status-degraded-border-hover)";
     if (status === "unknown") return "var(--color-status-unknown-border-hover)";
     return "var(--color-status-down-border-hover)";
 }
 
-function formatResponseTime(ms: number | null): string {
-    if (ms === null) return "\u2014";
-    if (ms >= 1000) return (ms / 1000).toFixed(1) + "s";
-    return ms + "ms";
-}
-
-function typeLabel(type: string): string {
-    const labels: Record<string, string> = {
-        "http": "HTTP",
-        "keyword": "Keyword",
-        "json-query": "JSON",
-        "dns": "DNS",
-        "ping": "Ping",
-        "port": "Port",
-    };
-    return labels[type] || type;
-}
-
-function probeLabel(service: Service): string {
+function probeLabel(service: PublicServiceSummary): string {
     if (service.probe_count === 0) return "No probes";
     return `${service.probes_up}/${service.probe_count} probes`;
 }
 
-function probeColor(service: Service): string {
+function probeColor(service: PublicServiceSummary): string {
     if (service.probe_count === 0) return "var(--color-text-muted)";
     if (service.probes_up === service.probe_count) return "var(--color-status-up)";
     if (service.probes_up === 0) return "var(--color-status-down)";
     return "var(--color-status-degraded)";
 }
 
-const serviceCount = computed(() => data.value?.services.length ?? 0);
-const monitorsTotal = computed(() => data.value?.monitors_total ?? 0);
-const monitorsUp = computed(() => data.value?.monitors_up ?? 0);
-const probeCount = computed(() =>
-    Math.max(...(data.value?.services.map(s => s.probe_count) ?? [0])),
+function serviceStatusLabel(status: PublicServiceSummary["overall_status"]): string {
+    return STATUS_LABELS[status];
+}
+
+const services = computed(() => statusData.value?.services ?? []);
+const recoveredRecently = computed(() =>
+    new Set(recentData.value?.newly_recovered.map((item) => item.service_slug) ?? []),
 );
-const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
+
+const searchableServices = computed(() => services.value.map((service) => ({
+    service,
+    searchKey: normalizeSearchValue(service.name),
+    recoveredRecently: recoveredRecently.value.has(service.slug),
+})));
+
+const filteredServices = computed(() => {
+    return searchableServices.value
+        .filter(({ service, searchKey, recoveredRecently }) => {
+            if (debouncedSearch.value && !searchKey.includes(debouncedSearch.value)) {
+                return false;
+            }
+
+            if (activeFilter.value === "degraded") {
+                return service.overall_status === "degraded";
+            }
+            if (activeFilter.value === "down") {
+                return service.overall_status === "down";
+            }
+            if (activeFilter.value === "recovered") {
+                return recoveredRecently;
+            }
+
+            return true;
+        })
+        .map(({ service }) => service);
+});
+
+const serviceCount = computed(() => services.value.length);
+const filteredCount = computed(() => filteredServices.value.length);
+const monitorsTotal = computed(() => statusData.value?.monitors_total ?? 0);
+const monitorsUp = computed(() => statusData.value?.monitors_up ?? 0);
+const probeCount = computed(() =>
+    services.value.length > 0
+        ? Math.max(...services.value.map((service) => service.probe_count))
+        : 0,
+);
+const checksPerSecond = computed(() => statusData.value?.checks_per_second ?? null);
+
+async function focusService(item: ServiceRecentItem) {
+    rawSearch.value = "";
+    debouncedSearch.value = "";
+    activeFilter.value = "all";
+    expandedSlug.value = item.service_slug;
+    highlightedSlug.value = item.service_slug;
+
+    if (highlightResetHandle) {
+        clearTimeout(highlightResetHandle);
+    }
+
+    await nextTick();
+    serviceRefs.value[item.service_slug]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+    });
+
+    highlightResetHandle = setTimeout(() => {
+        if (highlightedSlug.value === item.service_slug) {
+            highlightedSlug.value = null;
+        }
+    }, 2500);
+}
 </script>
 
 <template>
@@ -130,80 +198,144 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
             </button>
         </header>
 
-        <div v-if="data" class="mission">
+        <div v-if="statusData" class="mission">
             We're currently watching <strong>{{ serviceCount }} services</strong>
             with <strong>{{ monitorsUp }}/{{ monitorsTotal }} monitors healthy</strong>
             across <strong>{{ probeCount }} probes</strong><template v-if="checksPerSecond">,
-            doing roughly <strong>{{ checksPerSecond }} checks/sec</strong></template>
-            &mdash; trying to answer a simple question:
-            <em>how is Sweden doing on the internet today?</em>
+            doing roughly <strong>{{ checksPerSecond }} checks/sec</strong></template>.
+            This page tries to answer two questions at once:
+            <em>what is healthy right now, and what changed recently?</em>
         </div>
+
+        <PublicRecentStrip :recent="recentData" @select="focusService" />
 
         <ClientOnly>
-            <GeoMap v-if="data?.targets?.length" :targets="data.targets" />
+            <GeoMap v-if="statusData?.targets?.length" :targets="statusData.targets" />
         </ClientOnly>
 
-        <div v-if="data" class="services">
-            <div
-                v-for="service in data.services"
-                :key="service.slug"
-                class="service-card"
-                :class="{ expanded: isExpanded(service.slug) }"
-                :style="{
-                    '--card-border': borderColor(service.overall_status),
-                    '--card-border-hover': borderColorHover(service.overall_status),
-                }"
-            >
-                <div class="card-header" @click="toggleCard(service.slug)">
-                    <div class="card-body">
-                        <div class="card-name">{{ service.name }}</div>
-                        <div class="card-meta">
-                            <span class="probe-count" :style="{ color: probeColor(service) }">
-                                {{ probeLabel(service) }}
-                            </span>
-                            <span class="meta-sep">&middot;</span>
-                            <span class="monitor-count">{{ service.monitors.length }} monitors</span>
-                        </div>
-                    </div>
-                    <div class="card-status">
-                        <span
-                            class="status-dot"
-                            :style="{ background: statusColor(service.overall_status) }"
-                        />
-                        <span class="chevron" :class="{ open: isExpanded(service.slug) }">&#9662;</span>
-                    </div>
+        <section v-if="statusData" class="service-explorer">
+            <div class="explorer-head">
+                <div>
+                    <h2>Service Explorer</h2>
+                    <p>Search by service name, filter by state, and expand any service for live detail.</p>
                 </div>
-
-                <div v-if="isExpanded(service.slug)" class="monitor-list">
-                    <div
-                        v-for="(monitor, idx) in service.monitors"
-                        :key="monitor.id"
-                        class="monitor-row"
-                        :class="{ last: idx === service.monitors.length - 1 }"
-                    >
-                        <span
-                            class="status-dot small"
-                            :style="{ background: statusColor(monitor.status) }"
-                        />
-                        <span class="monitor-name">{{ monitor.name }}</span>
-                        <span class="monitor-type">{{ typeLabel(monitor.type) }}</span>
-                        <span class="response-time" :style="{ color: statusColor(monitor.status) }">
-                            {{ formatResponseTime(monitor.response_time) }}
-                        </span>
-                    </div>
+                <div class="result-count">
+                    Showing {{ filteredCount }} of {{ serviceCount }} services
                 </div>
             </div>
-        </div>
+
+            <div class="explorer-controls">
+                <label class="search-box">
+                    <span class="control-label">Search service</span>
+                    <input
+                        v-model="rawSearch"
+                        type="search"
+                        placeholder="Search Swedish infrastructure..."
+                        inputmode="search"
+                    >
+                </label>
+
+                <div class="filter-group" role="tablist" aria-label="Service filters">
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        :class="{ active: activeFilter === 'all' }"
+                        @click="activeFilter = 'all'"
+                    >
+                        All
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        :class="{ active: activeFilter === 'degraded' }"
+                        @click="activeFilter = 'degraded'"
+                    >
+                        Degraded
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        :class="{ active: activeFilter === 'down' }"
+                        @click="activeFilter = 'down'"
+                    >
+                        Down
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        :class="{ active: activeFilter === 'recovered' }"
+                        @click="activeFilter = 'recovered'"
+                    >
+                        Recovered Recently
+                    </button>
+                </div>
+            </div>
+
+            <div class="services">
+                <div
+                    v-for="service in filteredServices"
+                    :key="service.slug"
+                    :ref="(el) => setServiceRef(service.slug, el)"
+                    class="service-card"
+                    :class="{
+                        expanded: isExpanded(service.slug),
+                        highlighted: highlightedSlug === service.slug,
+                    }"
+                    :style="{
+                        '--card-border': borderColor(service.overall_status),
+                        '--card-border-hover': borderColorHover(service.overall_status),
+                    }"
+                >
+                    <div class="card-header" @click="toggleCard(service.slug)">
+                        <div class="card-body">
+                            <div class="card-name-row">
+                                <div class="card-name">{{ service.name }}</div>
+                                <span class="card-state" :class="`status-${service.overall_status}`">
+                                    {{ serviceStatusLabel(service.overall_status) }}
+                                </span>
+                            </div>
+
+                            <p v-if="service.description_excerpt" class="card-description">
+                                {{ service.description_excerpt }}
+                            </p>
+
+                            <div class="card-meta">
+                                <span class="probe-count" :style="{ color: probeColor(service) }">
+                                    {{ probeLabel(service) }}
+                                </span>
+                                <span class="meta-sep">&middot;</span>
+                                <span class="monitor-count">{{ service.monitors.length }} monitors</span>
+                            </div>
+                        </div>
+
+                        <div class="card-status">
+                            <span
+                                class="status-dot"
+                                :style="{ background: statusColor(service.overall_status) }"
+                            />
+                            <span class="chevron" :class="{ open: isExpanded(service.slug) }">&#9662;</span>
+                        </div>
+                    </div>
+
+                    <PublicServiceDetail v-if="isExpanded(service.slug)" :service="service" />
+                </div>
+            </div>
+
+            <div v-if="filteredServices.length === 0" class="empty-state">
+                <strong>No services matched.</strong>
+                <span>Try a broader search or switch back to another filter.</span>
+            </div>
+        </section>
 
         <footer class="footer">
             <p>
-                Powered by <strong>Iris</strong> &mdash;
+                Powered by <strong>Iris</strong> -
                 <ClientOnly>
-                    <span v-if="data">Data refreshed {{ new Date(data.generated_at).toLocaleString() }}</span>
+                    <span v-if="statusData">Data refreshed {{ new Date(statusData.generated_at).toLocaleString() }}</span>
                 </ClientOnly>
             </p>
             <p class="disclaimer">
-                Independent monitoring &mdash; may not reflect actual service status.
+                Independent monitoring - may not reflect actual service status.
                 <NuxtLink to="/legal">Disclaimer &amp; Privacy</NuxtLink>
             </p>
         </footer>
@@ -212,12 +344,10 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
 
 <style scoped>
 .page {
-    max-width: 1100px;
+    max-width: 1180px;
     margin: 0 auto;
     padding: 48px 24px;
 }
-
-/* ── Header ── */
 
 .header {
     text-align: center;
@@ -259,14 +389,12 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     color: var(--color-accent);
 }
 
-/* ── Mission statement ── */
-
 .mission {
     text-align: center;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
-    padding: 20px 24px;
+    border-radius: 12px;
+    padding: 22px 24px;
     margin-bottom: 32px;
     font-size: 15px;
     color: var(--color-text-muted);
@@ -283,22 +411,105 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     font-style: italic;
 }
 
-/* ── Card grid ── */
+.service-explorer {
+    margin-top: 8px;
+}
+
+.explorer-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.explorer-head h2 {
+    font-size: 22px;
+    margin-bottom: 4px;
+}
+
+.explorer-head p,
+.result-count {
+    color: var(--color-text-muted);
+    font-size: 13px;
+}
+
+.explorer-controls {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.search-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: min(360px, 100%);
+}
+
+.control-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-subtle);
+}
+
+.search-box input {
+    width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: var(--color-text);
+    font-size: 14px;
+    outline: none;
+}
+
+.search-box input:focus {
+    border-color: var(--color-focus);
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.filter-chip {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    border-radius: 999px;
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.filter-chip:hover,
+.filter-chip.active {
+    border-color: var(--color-focus);
+    color: var(--color-text);
+    background: var(--color-surface-hover);
+}
 
 .services {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
 }
-
-/* ── Card ── */
 
 .service-card {
     background: var(--color-surface);
     border: 1px solid var(--card-border, var(--color-border));
-    border-radius: 10px;
+    border-radius: 14px;
     overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .service-card:hover {
@@ -308,7 +519,11 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
 .service-card.expanded {
     grid-column: 1 / -1;
     border-color: var(--color-focus);
-    box-shadow: 0 0 0 1px var(--color-focus), 0 4px 20px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 0 0 1px var(--color-focus), 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.service-card.highlighted {
+    box-shadow: 0 0 0 1px var(--color-focus), 0 0 0 8px rgba(137, 174, 207, 0.08);
 }
 
 .card-header {
@@ -317,7 +532,7 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     justify-content: space-between;
     padding: 20px;
     cursor: pointer;
-    min-height: 110px;
+    gap: 12px;
     transition: background 0.15s;
 }
 
@@ -330,12 +545,38 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     min-width: 0;
 }
 
+.card-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
 .card-name {
     font-weight: 600;
-    font-size: 16px;
-    margin-bottom: 12px;
+    font-size: 18px;
     line-height: 1.3;
     color: var(--color-text);
+}
+
+.card-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 84px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.card-description {
+    color: var(--color-text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 14px;
 }
 
 .card-meta {
@@ -373,9 +614,24 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     flex-shrink: 0;
 }
 
-.status-dot.small {
-    width: 8px;
-    height: 8px;
+.status-up {
+    background: rgba(167, 196, 173, 0.14);
+    color: var(--color-status-up);
+}
+
+.status-down {
+    background: rgba(230, 126, 128, 0.14);
+    color: var(--color-status-down);
+}
+
+.status-degraded {
+    background: rgba(242, 193, 141, 0.14);
+    color: var(--color-status-degraded);
+}
+
+.status-unknown {
+    background: rgba(107, 112, 116, 0.14);
+    color: var(--color-status-unknown);
 }
 
 .chevron {
@@ -389,56 +645,19 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     transform: rotate(180deg);
 }
 
-/* ── Expanded monitor list ── */
-
-.monitor-list {
-    border-top: 1px solid var(--color-border);
-    padding: 4px 20px;
-}
-
-.monitor-row {
+.empty-state {
     display: flex;
+    flex-direction: column;
+    gap: 6px;
     align-items: center;
-    gap: 10px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--color-border);
-}
-
-.monitor-row.last {
-    border-bottom: none;
-}
-
-.monitor-name {
-    flex: 1;
-    min-width: 0;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.monitor-type {
-    font-size: 11px;
+    justify-content: center;
+    text-align: center;
+    margin-top: 16px;
+    padding: 28px;
+    border-radius: 14px;
+    border: 1px dashed var(--color-border);
     color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    padding: 1px 8px;
-    border-radius: 10px;
-    white-space: nowrap;
-    flex-shrink: 0;
 }
-
-.response-time {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    flex-shrink: 0;
-    min-width: 56px;
-    text-align: right;
-}
-
-/* ── Footer ── */
 
 .footer {
     text-align: center;
@@ -466,7 +685,17 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
     color: var(--color-text);
 }
 
-/* ── Mobile ── */
+@media (max-width: 860px) {
+    .explorer-head,
+    .explorer-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .search-box {
+        min-width: 100%;
+    }
+}
 
 @media (max-width: 640px) {
     .page {
@@ -487,15 +716,11 @@ const checksPerSecond = computed(() => data.value?.checks_per_second ?? null);
 
     .card-header {
         padding: 16px;
-        min-height: 0;
     }
 
-    .monitor-list {
-        padding: 4px 16px;
-    }
-
-    .monitor-name {
-        white-space: normal;
+    .card-name-row {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     .theme-toggle {
