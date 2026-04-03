@@ -72,11 +72,12 @@ services:
   # Collects Docker container logs on this probe and ships them to master's
   # OTEL collector, which forwards to Grafana Cloud.
   iris-log-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.144.0
     container_name: iris-log-collector
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     user: "0"  # Root required to read /var/lib/docker/containers log files
+    mem_limit: 384m
     environment:
       HOSTNAME: ${HOSTNAME:-iris-probe}
       IRIS_MASTER_IP: ${IRIS_MASTER_IP}

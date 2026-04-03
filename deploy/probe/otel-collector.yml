@@ -1,7 +1,7 @@
 receivers:
   # Collect Docker container logs from all containers on this probe host.
   # Parses Docker JSON log format; ships to master's OTEL collector via OTLP.
-  filelog/docker:
+  file_log/docker:
     include:
       - /var/lib/docker/containers/*/*.log
     include_file_path: true
@@ -36,18 +36,32 @@ processors:
 
 exporters:
   # Forward logs to master's OTEL collector via OTLP HTTP (same endpoint probes use for metrics)
-  otlphttp/master:
+  otlp_http/master:
     endpoint: http://${env:IRIS_MASTER_IP}:4318
     tls:
       insecure: true
 
 service:
   telemetry:
+    resource:
+      host.name: ${env:HOSTNAME}
+      iris.collector.role: probe
     logs:
       level: warn
+    metrics:
+      # Emit the probe log collector's own otelcol_* metrics upstream so we can
+      # alert on sent/failed/refused behavior without SSHing into the host.
+      level: detailed
+      readers:
+        - periodic:
+            interval: 30s
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://${env:IRIS_MASTER_IP}:4318
 
   pipelines:
     logs:
-      receivers: [filelog/docker]
+      receivers: [file_log/docker]
       processors: [resource/probe, batch]
-      exporters: [otlphttp/master]
+      exporters: [otlp_http/master]

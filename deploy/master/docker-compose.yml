@@ -58,11 +58,12 @@ services:
       - iris-network
 
   iris-otel:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.144.0
     container_name: iris-otel
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     user: "0"  # Root required to read /var/lib/docker/containers log files
+    mem_limit: 1536m
     environment:
       # Credentials to scrape /metrics from iris-web (same as admin user)
       IRIS_METRICS_USER: ${IRIS_MASTER_USER:-admin}
