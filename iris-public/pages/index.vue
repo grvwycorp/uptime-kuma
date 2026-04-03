@@ -1,17 +1,9 @@
 <script setup lang="ts">
-import type { ComponentPublicInstance } from "vue";
 import type { PublicRecentData, PublicServiceSummary, PublicStatusData, ServiceRecentItem } from "~/types/public";
 
 definePageMeta({ layout: "public" });
 
 type ServiceFilter = "all" | "degraded" | "down" | "recovered";
-
-const STATUS_LABELS: Record<PublicServiceSummary["overall_status"], string> = {
-    up: "Healthy",
-    degraded: "Degraded",
-    down: "Down",
-    unknown: "Unknown",
-};
 
 const config = useRuntimeConfig();
 const statusPollInterval = config.public.statusPollInterval as number;
@@ -21,17 +13,26 @@ const { data: statusData, refresh: refreshStatus } = await useFetch<PublicStatus
 const { data: recentData, refresh: refreshRecent } = await useFetch<PublicRecentData>("/api/public/recent");
 const { toggle, modeLabel, modeIcon } = useColorMode();
 
+type ServiceRow = {
+    key: string;
+    expandedService: PublicServiceSummary | null;
+    services: PublicServiceSummary[];
+};
+
 const expandedSlug = ref<string | null>(null);
 const highlightedSlug = ref<string | null>(null);
 const activeFilter = ref<ServiceFilter>("all");
 const rawSearch = ref("");
 const debouncedSearch = ref("");
+const isSingleColumnLayout = ref(false);
 const serviceRefs = shallowRef<Record<string, HTMLElement | null>>({});
 
 let searchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
 let highlightResetHandle: ReturnType<typeof setTimeout> | null = null;
 let statusRefreshHandle: ReturnType<typeof setInterval> | null = null;
 let recentRefreshHandle: ReturnType<typeof setInterval> | null = null;
+let layoutMediaQuery: MediaQueryList | null = null;
+let layoutMediaHandler: ((event: MediaQueryListEvent) => void) | null = null;
 
 function normalizeSearchValue(value: string): string {
     return value
@@ -53,6 +54,15 @@ watch(rawSearch, (value) => {
 onMounted(() => {
     statusRefreshHandle = setInterval(refreshStatus, statusPollInterval);
     recentRefreshHandle = setInterval(refreshRecent, recentPollInterval);
+
+    if (window.matchMedia) {
+        layoutMediaQuery = window.matchMedia("(max-width: 640px)");
+        isSingleColumnLayout.value = layoutMediaQuery.matches;
+        layoutMediaHandler = (event: MediaQueryListEvent) => {
+            isSingleColumnLayout.value = event.matches;
+        };
+        layoutMediaQuery.addEventListener("change", layoutMediaHandler);
+    }
 });
 
 onUnmounted(() => {
@@ -68,6 +78,9 @@ onUnmounted(() => {
     if (highlightResetHandle) {
         clearTimeout(highlightResetHandle);
     }
+    if (layoutMediaQuery && layoutMediaHandler) {
+        layoutMediaQuery.removeEventListener("change", layoutMediaHandler);
+    }
 });
 
 function toggleCard(slug: string) {
@@ -78,45 +91,12 @@ function isExpanded(slug: string): boolean {
     return expandedSlug.value === slug;
 }
 
-function setServiceRef(slug: string, el: Element | ComponentPublicInstance | null) {
+function setServiceRef(slug: string, el: Element | null) {
     serviceRefs.value[slug] = el instanceof HTMLElement ? el : null;
 }
 
-function statusColor(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "up") return "var(--color-status-up)";
-    if (status === "degraded") return "var(--color-status-degraded)";
-    if (status === "unknown") return "var(--color-status-unknown)";
-    return "var(--color-status-down)";
-}
-
-function borderColor(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "up") return "var(--color-status-up-border)";
-    if (status === "degraded") return "var(--color-status-degraded-border)";
-    if (status === "unknown") return "var(--color-status-unknown-border)";
-    return "var(--color-status-down-border)";
-}
-
-function borderColorHover(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "up") return "var(--color-status-up-border-hover)";
-    if (status === "degraded") return "var(--color-status-degraded-border-hover)";
-    if (status === "unknown") return "var(--color-status-unknown-border-hover)";
-    return "var(--color-status-down-border-hover)";
-}
-
-function probeLabel(service: PublicServiceSummary): string {
-    if (service.probe_count === 0) return "No probes";
-    return `${service.probes_up}/${service.probe_count} probes`;
-}
-
-function probeColor(service: PublicServiceSummary): string {
-    if (service.probe_count === 0) return "var(--color-text-muted)";
-    if (service.probes_up === service.probe_count) return "var(--color-status-up)";
-    if (service.probes_up === 0) return "var(--color-status-down)";
-    return "var(--color-status-degraded)";
-}
-
-function serviceStatusLabel(status: PublicServiceSummary["overall_status"]): string {
-    return STATUS_LABELS[status];
+function assignServiceRef(slug: string) {
+    return (el: Element | null) => setServiceRef(slug, el);
 }
 
 const services = computed(() => statusData.value?.services ?? []);
@@ -150,6 +130,36 @@ const filteredServices = computed(() => {
             return true;
         })
         .map(({ service }) => service);
+});
+
+watch(filteredServices, (services) => {
+    if (expandedSlug.value && !services.some((service) => service.slug === expandedSlug.value)) {
+        expandedSlug.value = null;
+    }
+});
+
+function chunkServices(services: PublicServiceSummary[], size: number): PublicServiceSummary[][] {
+    const rows: PublicServiceSummary[][] = [];
+    for (let index = 0; index < services.length; index += size) {
+        rows.push(services.slice(index, index + size));
+    }
+    return rows;
+}
+
+const serviceRows = computed<ServiceRow[]>(() => {
+    return chunkServices(filteredServices.value, 3).map((row, index) => {
+        const expandedService = expandedSlug.value
+            ? row.find((service) => service.slug === expandedSlug.value) || null
+            : null;
+
+        return {
+            key: `${index}-${row.map((service) => service.slug).join("-")}`,
+            expandedService,
+            services: expandedService
+                ? row.filter((service) => service.slug !== expandedService.slug)
+                : row,
+        };
+    });
 });
 
 const serviceCount = computed(() => services.value.length);
@@ -271,53 +281,56 @@ async function focusService(item: ServiceRecentItem) {
                 </div>
             </div>
 
-            <div class="services">
+            <div v-if="isSingleColumnLayout" class="services-mobile">
                 <div
                     v-for="service in filteredServices"
                     :key="service.slug"
-                    :ref="(el) => setServiceRef(service.slug, el)"
-                    class="service-card"
-                    :class="{
-                        expanded: isExpanded(service.slug),
-                        highlighted: highlightedSlug === service.slug,
-                    }"
-                    :style="{
-                        '--card-border': borderColor(service.overall_status),
-                        '--card-border-hover': borderColorHover(service.overall_status),
-                    }"
+                    :ref="assignServiceRef(service.slug)"
+                    class="service-slot"
                 >
-                    <div class="card-header" @click="toggleCard(service.slug)">
-                        <div class="card-body">
-                            <div class="card-name-row">
-                                <div class="card-name">{{ service.name }}</div>
-                                <span class="card-state" :class="`status-${service.overall_status}`">
-                                    {{ serviceStatusLabel(service.overall_status) }}
-                                </span>
-                            </div>
+                    <PublicServiceCard
+                        :service="service"
+                        :expanded="isExpanded(service.slug)"
+                        :highlighted="highlightedSlug === service.slug"
+                        @toggle="toggleCard"
+                    />
+                </div>
+            </div>
 
-                            <p v-if="service.description_excerpt" class="card-description">
-                                {{ service.description_excerpt }}
-                            </p>
-
-                            <div class="card-meta">
-                                <span class="probe-count" :style="{ color: probeColor(service) }">
-                                    {{ probeLabel(service) }}
-                                </span>
-                                <span class="meta-sep">&middot;</span>
-                                <span class="monitor-count">{{ service.monitors.length }} monitors</span>
-                            </div>
-                        </div>
-
-                        <div class="card-status">
-                            <span
-                                class="status-dot"
-                                :style="{ background: statusColor(service.overall_status) }"
-                            />
-                            <span class="chevron" :class="{ open: isExpanded(service.slug) }">&#9662;</span>
-                        </div>
+            <div v-else class="services-desktop">
+                <div
+                    v-for="row in serviceRows"
+                    :key="row.key"
+                    class="services-row-group"
+                >
+                    <div
+                        v-if="row.expandedService"
+                        :ref="assignServiceRef(row.expandedService.slug)"
+                        class="service-slot service-slot-expanded"
+                    >
+                        <PublicServiceCard
+                            :service="row.expandedService"
+                            :expanded="true"
+                            :highlighted="highlightedSlug === row.expandedService.slug"
+                            @toggle="toggleCard"
+                        />
                     </div>
 
-                    <PublicServiceDetail v-if="isExpanded(service.slug)" :service="service" />
+                    <div v-if="row.services.length > 0" class="services-row">
+                        <div
+                            v-for="service in row.services"
+                            :key="service.slug"
+                            :ref="assignServiceRef(service.slug)"
+                            class="service-slot"
+                        >
+                            <PublicServiceCard
+                                :service="service"
+                                :expanded="false"
+                                :highlighted="highlightedSlug === service.slug"
+                                @toggle="toggleCard"
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -498,151 +511,31 @@ async function focusService(item: ServiceRecentItem) {
     background: var(--color-surface-hover);
 }
 
-.services {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+.services-desktop,
+.services-mobile {
+    display: flex;
+    flex-direction: column;
     gap: 16px;
 }
 
-.service-card {
-    background: var(--color-surface);
-    border: 1px solid var(--card-border, var(--color-border));
-    border-radius: 14px;
-    overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-
-.service-card:hover {
-    border-color: var(--card-border-hover, var(--color-border));
-}
-
-.service-card.expanded {
-    grid-column: 1 / -1;
-    border-color: var(--color-focus);
-    box-shadow: 0 0 0 1px var(--color-focus), 0 10px 30px rgba(0, 0, 0, 0.12);
-}
-
-.service-card.highlighted {
-    box-shadow: 0 0 0 1px var(--color-focus), 0 0 0 8px rgba(137, 174, 207, 0.08);
-}
-
-.card-header {
+.services-row-group {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: 20px;
-    cursor: pointer;
-    gap: 12px;
-    transition: background 0.15s;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.card-header:hover {
-    background: var(--color-surface-hover);
+.services-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
 }
 
-.card-body {
-    flex: 1;
+.service-slot {
     min-width: 0;
 }
 
-.card-name-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-}
-
-.card-name {
-    font-weight: 600;
-    font-size: 18px;
-    line-height: 1.3;
-    color: var(--color-text);
-}
-
-.card-state {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 84px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    flex-shrink: 0;
-}
-
-.card-description {
-    color: var(--color-text-muted);
-    font-size: 13px;
-    line-height: 1.6;
-    margin-bottom: 14px;
-}
-
-.card-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-}
-
-.probe-count {
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-}
-
-.meta-sep {
-    color: var(--color-text-subtle);
-}
-
-.monitor-count {
-    color: var(--color-text-muted);
-}
-
-.card-status {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding-top: 2px;
-}
-
-.status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.status-up {
-    background: rgba(167, 196, 173, 0.14);
-    color: var(--color-status-up);
-}
-
-.status-down {
-    background: rgba(230, 126, 128, 0.14);
-    color: var(--color-status-down);
-}
-
-.status-degraded {
-    background: rgba(242, 193, 141, 0.14);
-    color: var(--color-status-degraded);
-}
-
-.status-unknown {
-    background: rgba(107, 112, 116, 0.14);
-    color: var(--color-status-unknown);
-}
-
-.chevron {
-    color: var(--color-text-muted);
-    font-size: 13px;
-    transition: transform 0.25s ease;
-    display: inline-block;
-}
-
-.chevron.open {
-    transform: rotate(180deg);
+.service-slot-expanded {
+    width: 100%;
 }
 
 .empty-state {
@@ -704,23 +597,6 @@ async function focusService(item: ServiceRecentItem) {
 
     .brand {
         font-size: 36px;
-    }
-
-    .services {
-        grid-template-columns: 1fr;
-    }
-
-    .service-card.expanded {
-        grid-column: 1;
-    }
-
-    .card-header {
-        padding: 16px;
-    }
-
-    .card-name-row {
-        align-items: flex-start;
-        flex-direction: column;
     }
 
     .theme-toggle {
