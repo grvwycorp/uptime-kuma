@@ -36,7 +36,7 @@ processors:
 
 exporters:
   # Forward logs to master's OTEL collector via OTLP HTTP (same endpoint probes use for metrics)
-  otlphttp/master:
+  otlp_http/master:
     endpoint: http://${env:IRIS_MASTER_IP}:4318
     tls:
       insecure: true
@@ -64,4 +64,4 @@ service:
     logs:
       receivers: [filelog/docker]
       processors: [resource/probe, batch]
-      exporters: [otlphttp/master]
+      exporters: [otlp_http/master]
