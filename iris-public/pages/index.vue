@@ -217,12 +217,6 @@ async function focusService(item: ServiceRecentItem) {
             <em>what is healthy right now, and what changed recently?</em>
         </div>
 
-        <PublicRecentStrip :recent="recentData" @select="focusService" />
-
-        <ClientOnly>
-            <GeoMap v-if="statusData?.targets?.length" :targets="statusData.targets" />
-        </ClientOnly>
-
         <section v-if="statusData" class="service-explorer">
             <div class="explorer-head">
                 <div>
@@ -340,6 +334,16 @@ async function focusService(item: ServiceRecentItem) {
             </div>
         </section>
 
+        <section v-if="statusData?.targets?.length" class="map-section">
+            <ClientOnly>
+                <GeoMap :targets="statusData.targets" />
+            </ClientOnly>
+        </section>
+
+        <section class="recent-section">
+            <PublicRecentStrip :recent="recentData" @select="focusService" />
+        </section>
+
         <footer class="footer">
             <p>
                 Powered by <strong>Iris</strong> -
@@ -425,6 +429,14 @@ async function focusService(item: ServiceRecentItem) {
 }
 
 .service-explorer {
+    margin-top: 8px;
+}
+
+.map-section {
+    margin-top: 24px;
+}
+
+.recent-section {
     margin-top: 8px;
 }
 
@@ -604,6 +616,14 @@ async function focusService(item: ServiceRecentItem) {
         right: 0;
         padding: 4px 8px;
         font-size: 16px;
+    }
+
+    .map-section {
+        margin-top: 20px;
+    }
+
+    .recent-section {
+        margin-top: 4px;
     }
 }
 </style>
