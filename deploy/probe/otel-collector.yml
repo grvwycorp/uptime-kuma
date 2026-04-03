@@ -1,7 +1,7 @@
 receivers:
   # Collect Docker container logs from all containers on this probe host.
   # Parses Docker JSON log format; ships to master's OTEL collector via OTLP.
-  file_log/docker:
+  filelog/docker:
     include:
       - /var/lib/docker/containers/*/*.log
     include_file_path: true
@@ -36,7 +36,7 @@ processors:
 
 exporters:
   # Forward logs to master's OTEL collector via OTLP HTTP (same endpoint probes use for metrics)
-  otlp_http/master:
+  otlphttp/master:
     endpoint: http://${env:IRIS_MASTER_IP}:4318
     tls:
       insecure: true
@@ -62,6 +62,6 @@ service:
 
   pipelines:
     logs:
-      receivers: [file_log/docker]
+      receivers: [filelog/docker]
       processors: [resource/probe, batch]
-      exporters: [otlp_http/master]
+      exporters: [otlphttp/master]

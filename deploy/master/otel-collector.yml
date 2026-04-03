@@ -12,7 +12,7 @@ receivers:
 
   # Collect Docker container logs from all containers on this host.
   # Parses the Docker JSON log format and extracts body/stream/timestamp.
-  file_log/docker:
+  filelog/docker:
     include:
       - /var/lib/docker/containers/*/*.log
     include_file_path: true
@@ -63,7 +63,7 @@ exporters:
     verbosity: basic
 
   # Grafana Cloud OTLP exporter
-  otlp_http/grafana:
+  otlphttp/grafana:
     endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
     headers:
       Authorization: 'Basic ${env:GRAFANA_OTLP_HEADERS}'
@@ -89,12 +89,12 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch/default]
-      exporters: [otlp_http/grafana, prometheus, prometheusremotewrite/vm]
+      exporters: [otlphttp/grafana, prometheus, prometheusremotewrite/vm]
 
     logs:
-      receivers: [otlp, file_log/docker]
+      receivers: [otlp, filelog/docker]
       processors: [memory_limiter, resource/master, batch/logs]
-      exporters: [otlp_http/grafana]
+      exporters: [otlphttp/grafana]
 
   telemetry:
     resource:
