@@ -34,6 +34,7 @@ processors:
   batch/default:
     timeout: 10s
     send_batch_size: 1024
+    send_batch_max_size: 1024
 
   # Keep log batches smaller than metrics/traces to reduce burst memory
   # pressure when filelog/docker drains multiple container logs at once.
