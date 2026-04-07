@@ -370,5 +370,15 @@ jobs:
           docker logs iris-bgp 2>&1 | tail -20
           # Don't fail deployment if BGPalerter isn't ready yet
 
+      - name: Cleanup retired probe observability containers
+        run: |
+          for name in iris-log-collector; do
+            if docker ps -a --format '{{.Names}}' | grep -q "^${name}$"; then
+              echo "Removing retired container: ${name}"
+              docker stop "${name}" 2>/dev/null || true
+              docker rm "${name}" 2>/dev/null || true
+            fi
+          done
+
       - name: Cleanup old images
         run: docker image prune -f
