@@ -1,6 +1,7 @@
 # Iris Fleet Inventory
 # This file documents the fleet topology for reference.
-# Actual deployment is driven by GitHub runner labels.
+# Actual deployment is driven by the hardcoded probe matrix in
+# .github/workflows/deploy.yml plus GitHub runner labels.
 
 masters:
   - hostname: master01-hostup
@@ -40,6 +41,12 @@ probes:
     tailscale_fqdn: labbmartin.tail605657.ts.net
     location: Karlstad
 
+  - hostname: probe03-karabro
+    description: probe03 VPS 
+    runner_labels: [self-hosted, Linux, X64, probe, probe03-karabro]
+    tailscale_name: probe03-karabro
+    tailscale_ip: 100.74.20.32
+    location: Malmö
   # Retired – removed from CI/CD deployment
   # - hostname: debian
   #   description: Debianbook probe
@@ -50,6 +57,8 @@ probes:
   #   location: nuremberg
 
 # To add a new probe:
-# 1. Run setup-runner.sh with labels: probe,linux
+# 1. Run setup-runner.sh with labels: probe
+#    The script appends the hostname as a unique runner label automatically.
 # 2. Run setup-tailscale.sh with appropriate hostname
-# 3. Push to master branch - probe auto-deploys
+# 3. Add the hostname label to the probe matrix in .github/workflows/deploy.yml
+# 4. Push to master branch - probe auto-deploys
