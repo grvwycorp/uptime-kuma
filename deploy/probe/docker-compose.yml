@@ -24,6 +24,9 @@ services:
       # Note: MagicDNS names don't resolve inside Docker bridge containers,
       # so we use the Tailscale IP directly via IRIS_MASTER_IP org secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://${IRIS_MASTER_IP}:4318
+      # Slow probe metric exports to 30s to reduce Grafana Cloud ingestion
+      # pressure now that the fleet has grown to three probes.
+      OTEL_METRIC_EXPORT_INTERVAL: 30000
     volumes:
       - iris-probe-data:/app/data
     # Host network mode: avoids creating a new network namespace, which fixes

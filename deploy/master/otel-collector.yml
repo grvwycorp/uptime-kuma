@@ -6,6 +6,27 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # Scrape a very small subset of the collector's own Prometheus telemetry so
+  # Grafana Cloud can evaluate OTEL queue/export alerts and SLOs.
+  prometheus/self:
+    config:
+      global:
+        scrape_interval: 30s
+        scrape_timeout: 10s
+      scrape_configs:
+        - job_name: otelcol-contrib
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: 'up|otelcol_(exporter_queue_size|exporter_queue_capacity|exporter_send_failed_metric_points_total|exporter_sent_metric_points_total|receiver_accepted_metric_points_total|receiver_failed_metric_points_total|receiver_refused_metric_points_total|process_memory_rss)'
+              action: keep
+            - source_labels: [exporter]
+              regex: 'otlp_http/grafana'
+              target_label: exporter
+              replacement: otlphttp
+              action: replace
+
   # Legacy Prometheus scraper removed - was creating duplicate metrics
   # with job="unknown_service:node" and high-cardinality labels.
   # All metrics now flow through OTLP push from probes (job="iris-probe").
@@ -88,7 +109,7 @@ service:
       exporters: [debug]
 
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus/self]
       processors: [memory_limiter, batch/default]
       exporters: [otlp_http/grafana, prometheus, prometheusremotewrite/vm]
 
