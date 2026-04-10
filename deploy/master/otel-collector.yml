@@ -52,6 +52,26 @@ receivers:
         to: attributes["log.iostream"]
 
 processors:
+  # Grafana Cloud is the constrained backend, so give it a slimmer metrics
+  # branch while keeping the full metrics stream for local Prometheus + VM.
+  filter/grafana_cloud_metrics:
+    error_mode: ignore
+    metrics:
+      metric:
+        - metric.name == "monitor_cert_days_remaining"
+        - metric.name == "monitor_cert_is_valid"
+
+  # The main Iris dashboard only joins monitor_info on service/name/type/IDs.
+  # Trim unused metadata labels on the Grafana Cloud branch to reduce churn.
+  transform/grafana_cloud_metrics:
+    error_mode: ignore
+    metric_statements:
+      - delete_key(datapoint.attributes, "monitor_url") where metric.name == "monitor_info"
+      - delete_key(datapoint.attributes, "monitor_hostname") where metric.name == "monitor_info"
+      - delete_key(datapoint.attributes, "monitor_port") where metric.name == "monitor_info"
+      - delete_key(datapoint.attributes, "tags") where metric.name == "monitor_info"
+      - delete_key(datapoint.attributes, "sub_service") where metric.name == "monitor_info"
+
   batch/default:
     timeout: 10s
     send_batch_size: 1024
@@ -108,10 +128,18 @@ service:
       processors: [memory_limiter, batch/default]
       exporters: [debug]
 
-    metrics:
+    # Full-fidelity metrics stay local for iris-public and long-term storage.
+    metrics/local:
       receivers: [otlp, prometheus/self]
       processors: [memory_limiter, batch/default]
-      exporters: [otlp_http/grafana, prometheus, prometheusremotewrite/vm]
+      exporters: [prometheus, prometheusremotewrite/vm]
+
+    # Grafana Cloud gets a filtered branch to stay under ingestion limits while
+    # preserving the metrics and labels the current dashboard depends on.
+    metrics/grafana:
+      receivers: [otlp, prometheus/self]
+      processors: [memory_limiter, filter/grafana_cloud_metrics, transform/grafana_cloud_metrics, batch/default]
+      exporters: [otlp_http/grafana]
 
     logs:
       receivers: [otlp, filelog/docker]

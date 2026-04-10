@@ -14,6 +14,7 @@
  *
  * Environment:
  *   OTEL_EXPORTER_OTLP_ENDPOINT — Collector endpoint (default: http://iris-otel:4317)
+ *   OTEL_METRIC_EXPORT_INTERVAL — Export interval in ms (default: 60000)
  *   BGP_ALERTER_STATUS_URL      — BGPalerter health endpoint (default: http://iris-bgp:8011/status)
  *   BRIDGE_PORT                  — HTTP port for webhook receiver (default: 8080)
  */
@@ -25,6 +26,7 @@ const { Resource } = require("@opentelemetry/resources");
 
 // --- Configuration ---
 const OTEL_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://iris-otel:4317";
+const METRIC_EXPORT_INTERVAL = parseInt(process.env.OTEL_METRIC_EXPORT_INTERVAL || "60000", 10);
 const STATUS_URL = process.env.BGP_ALERTER_STATUS_URL || "http://iris-bgp:8011/status";
 const PORT = parseInt(process.env.BRIDGE_PORT) || 8080;
 const HEALTH_CHECK_INTERVAL = 60000; // Check BGPalerter health every 60s
@@ -41,7 +43,7 @@ const meterProvider = new MeterProvider({
     readers: [
         new PeriodicExportingMetricReader({
             exporter,
-            exportIntervalMillis: 15000,
+            exportIntervalMillis: METRIC_EXPORT_INTERVAL,
         }),
     ],
 });
