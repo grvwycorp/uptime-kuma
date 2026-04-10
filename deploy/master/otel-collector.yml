@@ -71,6 +71,7 @@ processors:
       - delete_key(datapoint.attributes, "monitor_port") where metric.name == "monitor_info"
       - delete_key(datapoint.attributes, "tags") where metric.name == "monitor_info"
       - delete_key(datapoint.attributes, "sub_service") where metric.name == "monitor_info"
+      - delete_key(datapoint.attributes, "target_ip") where metric.name == "target_geo_info"
 
   batch/default:
     timeout: 10s
