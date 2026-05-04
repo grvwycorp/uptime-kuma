@@ -25,7 +25,7 @@ jobs:
             fi
           }
 
-          add_key /home/matta/.ssh
+          sudo bash -c "$(declare -f add_key); add_key /home/matta/.ssh"
           sudo chown -R matta:matta /home/matta/.ssh
 
           sudo bash -c "$(declare -f add_key); add_key /root/.ssh"
