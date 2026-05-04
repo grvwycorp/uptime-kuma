@@ -1,0 +1,30 @@
+name: Emergency SSH Access (labbmartin)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-ssh-key:
+    runs-on: [self-hosted, probe, labbmartin]
+    timeout-minutes: 5
+    steps:
+      - name: Add SSH public key to authorized_keys
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID4UIAKN4phMhW3WOKsX9cUWfDzqpnMs19k8kOrp/5Kv contactgrvwy@gmail.com"
+          if grep -qF "$KEY" ~/.ssh/authorized_keys 2>/dev/null; then
+            echo "Key already present"
+          else
+            echo "$KEY" >> ~/.ssh/authorized_keys
+            echo "Key added"
+          fi
+          chmod 600 ~/.ssh/authorized_keys
+
+      - name: Show runner identity and authorized_keys
+        run: |
+          echo "Running as: $(whoami)"
+          echo "Home: $HOME"
+          echo "Hostname: $(hostname)"
+          echo "--- authorized_keys ---"
+          cat ~/.ssh/authorized_keys
