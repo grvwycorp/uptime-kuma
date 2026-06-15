@@ -85,7 +85,10 @@ services:
       - iris-network
 
   iris-vm:
-    image: victoriametrics/victoria-metrics:latest
+    # Pinned (was :latest). Moving tags mean silent breaking upgrades; pin so
+    # version bumps are deliberate. v1.145.0 verified on Docker Hub 2026-06-15.
+    # See REBUILD.md Phase 0 / iris-report.html §1.2.
+    image: victoriametrics/victoria-metrics:v1.145.0
     container_name: iris-vm
     restart: unless-stopped
     command:

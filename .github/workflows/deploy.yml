@@ -153,8 +153,15 @@ jobs:
           else
             echo "=== Skipping iris-sync build (no changes) ==="
           fi
-          docker compose -p iris up -d --force-recreate --remove-orphans
-          # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
+          # Recreate ONLY services whose image or config actually changed.
+          # The old blanket `--force-recreate` bounced every container on every
+          # push — including iris-db (MariaDB) and iris-vm — which is the source
+          # of the "short service disruption". Compose already recreates a
+          # container when its built image changes, so let it decide.
+          # See REBUILD.md Phase 0 / iris-report.html §1.1.
+          docker compose -p iris up -d --remove-orphans
+          # OTEL config is a bind-mounted file, so editing it doesn't change the
+          # container's config hash. Restart just OTEL to reload the config.
           docker compose -p iris restart iris-otel || true
           sleep 5
           docker compose -p iris ps
@@ -233,7 +240,14 @@ jobs:
           # Don't fail deployment if VM isn't ready yet
 
       - name: Cleanup old images
-        run: docker image prune -f
+        run: |
+          # Old behaviour pruned only DANGLING images and never touched the
+          # build cache, which is what actually fills the disk after every
+          # `npm ci` + Vite build (hence the manual `docker prune` treadmill).
+          # Also reclaim build cache older than 72h — keeps recent layers for
+          # fast rebuilds, evicts the rest. See REBUILD.md Phase 0 / report §1.2.
+          docker image prune -f
+          docker builder prune -f --filter "until=72h"
 
   # ============================================
   # Probe deployment
@@ -318,7 +332,10 @@ jobs:
           else
             echo "=== Skipping iris-probe build (no changes) ==="
           fi
-          docker compose -p iris up -d --force-recreate --remove-orphans
+          # Recreate only what changed (no blanket --force-recreate). The probe
+          # image is rebuilt above when source changed; compose recreates it then.
+          # See REBUILD.md Phase 0 / iris-report.html §1.1.
+          docker compose -p iris up -d --remove-orphans
           sleep 5
           docker compose -p iris ps
 
@@ -348,4 +365,11 @@ jobs:
           docker volume rm iris-bgp-data 2>/dev/null || true
 
       - name: Cleanup old images
-        run: docker image prune -f
+        run: |
+          # Old behaviour pruned only DANGLING images and never touched the
+          # build cache, which is what actually fills the disk after every
+          # `npm ci` + Vite build (hence the manual `docker prune` treadmill).
+          # Also reclaim build cache older than 72h — keeps recent layers for
+          # fast rebuilds, evicts the rest. See REBUILD.md Phase 0 / report §1.2.
+          docker image prune -f
+          docker builder prune -f --filter "until=72h"
