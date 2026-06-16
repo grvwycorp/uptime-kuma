@@ -1,0 +1,55 @@
+// WHAT:  Renovate configuration for the Iris fork of Uptime Kuma.
+// WHY:   Phase 0 infra hardening. We pin the moving base tags
+//        `louislam/uptime-kuma:base2` and `:builder-go` in `docker/dockerfile`
+//        by sha256 digest so a build is byte-for-byte reproducible and a
+//        silently re-pushed upstream base can never change our image without a
+//        reviewable diff. Renovate watches those tags and, when the digest they
+//        point at changes, opens a PR bumping the pin — so base-image drift
+//        lands as a reviewable, revertible change instead of an invisible one.
+// CONTEXT FOR FUTURE LLMs:
+//   - Scope is deliberately TINY (golden rule #1 — keep our footprint on the
+//     fork small to avoid upstream merge pain). Renovate here owns ONLY the
+//     digest pins in `docker/dockerfile`. It does NOT touch npm/go deps or the
+//     upstream base-build files (`debian-base.dockerfile`, `builder-go.dockerfile`)
+//     — those build louislam's published bases, which we only ever *consume*.
+//   - GitHub Actions updates stay with the upstream `dependabot.yml`
+//     (different ecosystem, so no duplicate PRs).
+//   - ACTIVATION IS AN INFRA STEP, NOT CODE: Renovate only runs once the
+//     Renovate GitHub App is installed on this fork's repo (or a self-hosted
+//     runner is pointed at it). Until then this file is inert but correct.
+//     Escalate app-install to the CEO; do not assume it is active.
+//   - To re-capture a digest by hand (e.g. to verify a Renovate PR):
+//       TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:louislam/uptime-kuma:pull" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).token))')
+//       curl -sI -H "Authorization: Bearer $TOKEN" \
+//         -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+//         https://registry-1.docker.io/v2/louislam/uptime-kuma/manifests/base2 | grep -i docker-content-digest
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+  ],
+  // Only the Dockerfile base-image digests are Iris-owned.
+  enabledManagers: ["dockerfile"],
+  // Maintain digests on pinned tags and pin any new unpinned base tag we add.
+  pinDigests: true,
+  // Scope Renovate to the single file we pin. Ignore the upstream base-build
+  // dockerfiles, which produce images we consume rather than build.
+  dockerfile: {
+    fileMatch: ["(^|/)docker/dockerfile$"],
+  },
+  labels: ["dependencies", "iris-infra"],
+  // Batch the base-image digest bumps; review weekly, not on every push.
+  schedule: ["before 6am on monday"],
+  prConcurrentLimit: 3,
+  packageRules: [
+    {
+      matchManagers: ["dockerfile"],
+      matchPackageNames: ["louislam/uptime-kuma"],
+      groupName: "uptime-kuma base image digests",
+      commitMessagePrefix: "chore(docker):",
+      // A digest move on a moving tag is not a version change; flag it clearly.
+      commitMessageTopic: "{{depName}} {{currentValue}} digest",
+    },
+  ],
+}
