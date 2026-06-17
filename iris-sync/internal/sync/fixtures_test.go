@@ -71,6 +71,14 @@ func withParent(m *db.Monitor, parentID int64) *db.Monitor {
 	return &clone
 }
 
+// withTags returns a copy of m carrying the given tag names (for tag-driven
+// probe selection tests). Mirrors how Repository.AttachTags populates Tags.
+func withTags(m *db.Monitor, tags ...string) *db.Monitor {
+	clone := *m
+	clone.Tags = tags
+	return &clone
+}
+
 // monitorMap turns a slice of monitors into the id-keyed map the reconciler consumes.
 func monitorMap(mons ...*db.Monitor) map[int64]*db.Monitor {
 	out := make(map[int64]*db.Monitor, len(mons))

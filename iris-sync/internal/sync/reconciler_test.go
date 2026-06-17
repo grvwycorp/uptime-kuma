@@ -410,3 +410,102 @@ func TestFilterMonitorsByTypes_EmptyTypesReturnsAll(t *testing.T) {
 		t.Fatalf("empty type filter should return all monitors, got %d", len(filtered))
 	}
 }
+
+// --- FilterMonitorsForProbe (tag- AND type-driven probe selection) ---
+
+// TestFilterMonitorsForProbe_NoFiltersReturnsAll: a general-purpose probe with no
+// type or tag filter runs every monitor (the common, unchanged case).
+func TestFilterMonitorsForProbe_NoFiltersReturnsAll(t *testing.T) {
+	all := monitorMap(httpMonitor(1, "A", "https://a.example"), groupMonitor(2, "G"))
+	filtered := FilterMonitorsForProbe(all, nil, nil)
+	if len(filtered) != 2 {
+		t.Fatalf("no filters should return all monitors, got %d", len(filtered))
+	}
+}
+
+// TestFilterMonitorsForProbe_TagSelectsAndPreservesGroup: the labbmartin case —
+// select only "bgp"-tagged checks, and still pull in the ancestor group so the
+// tagged child is not orphaned on the probe. This is the gap the DB-level
+// GetMonitorsByTags left open.
+func TestFilterMonitorsForProbe_TagSelectsAndPreservesGroup(t *testing.T) {
+	group := groupMonitor(1, "Karlstad")
+	bgp := withTags(withParent(httpMonitor(2, "BGP feed", "https://bgp.example"), 1), "bgp")
+	web := withParent(httpMonitor(3, "Public web", "https://web.example"), 1) // untagged
+
+	all := monitorMap(group, bgp, web)
+	filtered := FilterMonitorsForProbe(all, nil, []string{"bgp"})
+
+	if _, ok := filtered[2]; !ok {
+		t.Error("expected the bgp-tagged monitor to be selected")
+	}
+	if _, ok := filtered[1]; !ok {
+		t.Error("expected the ancestor group to be preserved so the child is not orphaned")
+	}
+	if _, ok := filtered[3]; ok {
+		t.Error("the untagged sibling must NOT be selected")
+	}
+}
+
+// TestFilterMonitorsForProbe_TypeAndTagIntersect: with BOTH a type and a tag
+// filter, a monitor must match the type AND carry the tag.
+func TestFilterMonitorsForProbe_TypeAndTagIntersect(t *testing.T) {
+	httpTagged := withTags(httpMonitor(1, "http+bgp", "https://a.example"), "bgp")
+	httpUntagged := httpMonitor(2, "http only", "https://b.example")
+	dnsTagged := withTags(&db.Monitor{ID: 3, Name: "dns+bgp", Type: "dns", Active: 1, Interval: 60}, "bgp")
+
+	all := monitorMap(httpTagged, httpUntagged, dnsTagged)
+	filtered := FilterMonitorsForProbe(all, []string{"http"}, []string{"bgp"})
+
+	if _, ok := filtered[1]; !ok {
+		t.Error("http monitor tagged bgp must match the intersection")
+	}
+	if _, ok := filtered[2]; ok {
+		t.Error("http monitor without the bgp tag must be excluded")
+	}
+	if _, ok := filtered[3]; ok {
+		t.Error("bgp-tagged monitor of the wrong type must be excluded")
+	}
+}
+
+// TestFilterMonitorsForProbe_TypeOnlyMatchesFilterByTypes: with only a type
+// filter, the result matches the legacy FilterMonitorsByTypes path.
+func TestFilterMonitorsForProbe_TypeOnlyMatchesFilterByTypes(t *testing.T) {
+	group := groupMonitor(1, "Root")
+	leaf := withParent(httpMonitor(2, "Leaf", "https://leaf.example"), 1)
+	all := monitorMap(group, leaf)
+
+	viaProbe := FilterMonitorsForProbe(all, []string{"http"}, nil)
+	viaTypes := FilterMonitorsByTypes(all, []string{"http"})
+	if len(viaProbe) != len(viaTypes) {
+		t.Fatalf("type-only FilterMonitorsForProbe (%d) should match FilterMonitorsByTypes (%d)", len(viaProbe), len(viaTypes))
+	}
+	for id := range viaTypes {
+		if _, ok := viaProbe[id]; !ok {
+			t.Errorf("monitor %d present in FilterMonitorsByTypes but missing from FilterMonitorsForProbe", id)
+		}
+	}
+}
+
+// TestFilterMonitorsForProbe_AnyTagMatches: a monitor with several tags is
+// selected if it carries ANY of the probe's tags.
+func TestFilterMonitorsForProbe_AnyTagMatches(t *testing.T) {
+	m := withTags(httpMonitor(1, "multi", "https://a.example"), "edge", "bgp", "stockholm")
+	all := monitorMap(m)
+	filtered := FilterMonitorsForProbe(all, nil, []string{"bgp", "malmo"})
+	if _, ok := filtered[1]; !ok {
+		t.Error("monitor sharing one tag with the probe must be selected")
+	}
+}
+
+// TestFilterMonitorsForProbe_DoesNotMutateInput: filtering must not alter the
+// shared master monitor map (it is reused across probes in the same cycle).
+func TestFilterMonitorsForProbe_DoesNotMutateInput(t *testing.T) {
+	all := monitorMap(
+		withTags(httpMonitor(1, "tagged", "https://a.example"), "bgp"),
+		httpMonitor(2, "untagged", "https://b.example"),
+	)
+	_ = FilterMonitorsForProbe(all, nil, []string{"bgp"})
+	if len(all) != 2 {
+		t.Fatalf("input map was mutated: expected 2 entries, got %d", len(all))
+	}
+}

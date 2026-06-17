@@ -643,7 +643,6 @@ func FilterMonitorsByTypes(monitors map[int64]*db.Monitor, types []string) map[i
 		typeSet[t] = true
 	}
 
-	// First pass: collect directly matched monitors
 	filtered := make(map[int64]*db.Monitor)
 	for id, m := range monitors {
 		if typeSet[m.Type] {
@@ -651,10 +650,81 @@ func FilterMonitorsByTypes(monitors map[int64]*db.Monitor, types []string) map[i
 		}
 	}
 
-	// Second pass: include ancestor groups so hierarchies are preserved.
-	// Walk up the parent chain for each matched monitor and include any
-	// "group" type ancestors that aren't already in the filtered set.
+	includeAncestorGroups(monitors, filtered)
+	return filtered
+}
+
+// FilterMonitorsForProbe selects the subset of master monitors a given probe
+// should run, based on its configured type and tag filters, then re-attaches the
+// ancestor "group" monitors so the probe can reconstruct the hierarchy.
+//
+// Semantics (see deploy/inventory.yml — e.g. labbmartin runs only "bgp"-tagged
+// checks; master01 is UI-only and runs none):
+//   - No types AND no tags configured => the probe runs EVERYTHING (unchanged
+//     behaviour; the common case for a general-purpose probe).
+//   - Types only  => a monitor is selected if its type is in the set.
+//   - Tags only   => a monitor is selected if it carries any of the tags.
+//   - Both        => INTERSECTION: a monitor must match a type AND carry a tag.
+//     (A probe that says `types:[http] tags:[bgp]` wants http checks tagged bgp.)
+//
+// Group monitors are normally untagged and off-type, so they are not "direct"
+// matches; they are pulled back in purely as ancestors of selected monitors.
+// This is the key fix over the DB-level GetMonitorsByTags, which dropped parent
+// groups and would have left tagged children orphaned on the probe.
+//
+// Pure and allocation-local: callers pass monitors with Tags already populated
+// (see Repository.AttachTags). The input map is never mutated.
+func FilterMonitorsForProbe(monitors map[int64]*db.Monitor, types []string, tags []string) map[int64]*db.Monitor {
+	if len(types) == 0 && len(tags) == 0 {
+		return monitors
+	}
+
+	typeSet := make(map[string]bool, len(types))
+	for _, t := range types {
+		typeSet[t] = true
+	}
+	tagSet := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		tagSet[t] = true
+	}
+
+	filtered := make(map[int64]*db.Monitor)
+	for id, m := range monitors {
+		if len(typeSet) > 0 && !typeSet[m.Type] {
+			continue
+		}
+		if len(tagSet) > 0 && !monitorHasAnyTag(m, tagSet) {
+			continue
+		}
+		filtered[id] = m
+	}
+
+	includeAncestorGroups(monitors, filtered)
+	return filtered
+}
+
+// monitorHasAnyTag reports whether the monitor carries at least one tag in tagSet.
+func monitorHasAnyTag(m *db.Monitor, tagSet map[string]bool) bool {
+	for _, t := range m.Tags {
+		if tagSet[t] {
+			return true
+		}
+	}
+	return false
+}
+
+// includeAncestorGroups walks up the parent chain of every monitor already in
+// `filtered` and adds any "group"-type ancestors found in `monitors`, so a
+// filtered child never ends up orphaned. Mutates `filtered` in place. Guards
+// against parent cycles and already-included subtrees.
+func includeAncestorGroups(monitors, filtered map[int64]*db.Monitor) {
+	// Snapshot the directly-matched seeds: ranging over a map while inserting is
+	// undefined, so iterate the seeds, not the growing set.
+	seeds := make([]*db.Monitor, 0, len(filtered))
 	for _, m := range filtered {
+		seeds = append(seeds, m)
+	}
+	for _, m := range seeds {
 		parentID := m.Parent
 		visited := make(map[int64]bool)
 		for parentID.Valid {
@@ -666,18 +736,16 @@ func FilterMonitorsByTypes(monitors map[int64]*db.Monitor, types []string) map[i
 			if _, already := filtered[pid]; already {
 				break // already included, ancestors above it are too
 			}
-			if parent, exists := monitors[pid]; exists {
-				if parent.Type == "group" {
-					filtered[pid] = parent
-				}
-				parentID = parent.Parent
-			} else {
+			parent, exists := monitors[pid]
+			if !exists {
 				break
 			}
+			if parent.Type == "group" {
+				filtered[pid] = parent
+			}
+			parentID = parent.Parent
 		}
 	}
-
-	return filtered
 }
 
 // DriftResult holds the result of a single drift check for one monitor.
