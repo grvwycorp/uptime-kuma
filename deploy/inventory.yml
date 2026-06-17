@@ -1,16 +1,26 @@
 # Iris Fleet Inventory
-# This file documents the fleet topology for reference.
+# This file documents the fleet topology for reference (INTENT).
 # Actual deployment is driven by the hardcoded probe matrix in
 # .github/workflows/deploy.yml plus GitHub runner labels.
+#
+# For LIVE REALITY (which nodes are actually online + serving), do not trust this
+# file — run the facts-first CMDB: `node iris-cmdb/bin/iris-cmdb.js`. Snapshot at
+# orchestrator/infra/fleet-snapshot.md.
+#
+# Last reconciled against live facts: 2026-06-17 (iris-cmdb). Findings folded in
+# below as `verified:` / `status:` annotations.
 
 masters:
   - hostname: master01-hostup
     description: Primary master node (HostUp VPS)
     runner_labels: [self-hosted, master]
-    tailscale_name: master01-hostup
+    # CORRECTED 2026-06-17: the Tailscale device name is `master01`, not
+    # `master01-hostup` (verified via `tailscale status`).
+    tailscale_name: master01
     tailscale_ip: 100.121.116.41
-    tailscale_fqdn: master01-hostup.tail605657.ts.net
+    tailscale_fqdn: master01.tail605657.ts.net
     location: frankfurt
+    verified: 2026-06-17 online, serving Iris :3001 (HTTP 302)
     services:
       - iris-web (UI only, no monitoring)
       - iris-db (MariaDB)
@@ -28,10 +38,13 @@ probes:
   - hostname: probe01
     description: VPS probe
     runner_labels: [self-hosted, probe, probe01]
-    tailscale_name: probe01
+    # CORRECTED 2026-06-17: Tailscale device name is `probe01-hostup`, not
+    # `probe01` (verified via `tailscale status`). iris-sync targets it by IP.
+    tailscale_name: probe01-hostup
     tailscale_ip: 100.97.5.70
-    tailscale_fqdn: probe01.tail605657.ts.net
+    tailscale_fqdn: probe01-hostup.tail605657.ts.net
     location: Stockholm
+    verified: 2026-06-17 online, serving Iris :3001 (HTTP 302)
 
   - hostname: labbmartin
     description: Lab probe (Martin)
@@ -40,14 +53,24 @@ probes:
     tailscale_ip: 100.88.142.75
     tailscale_fqdn: labbmartin.tail605657.ts.net
     location: Karlstad
+    # FLAG 2026-06-17: OFFLINE ~9 days (last seen 2026-06-08). iris-sync still
+    # targets this IP in deploy/master/docker-compose.yml, so syncs to Karlstad
+    # are failing. Bring it back or remove from the sync matrix. CEO/Astrid call.
+    verified: 2026-06-17 DOWN (offline ~9d)
 
   - hostname: probe03-karabro
-    description: probe03 VPS 
+    description: probe03 VPS
     runner_labels: [self-hosted, Linux, X64, probe, probe03-karabro]
     tailscale_name: probe03-karabro
     tailscale_ip: 100.74.20.32
     location: Malmö
-  # Retired – removed from CI/CD deployment
+    # FLAG 2026-06-17: OFFLINE ~36 days (last seen 2026-05-12). Still in the
+    # iris-sync target matrix. Effectively not a live probe right now.
+    verified: 2026-06-17 DOWN (offline ~36d)
+  # Retired – removed from CI/CD deployment.
+  # NOTE 2026-06-17: `debian` is STILL JOINED to the tailnet (online, not serving
+  # Iris :3001). It's a zombie — decommission in the Tailscale admin console or
+  # re-purpose it as a real probe. Left commented here as it's out of CI/CD.
   # - hostname: debian
   #   description: Debianbook probe
   #   runner_labels: [self-hosted, probe]
