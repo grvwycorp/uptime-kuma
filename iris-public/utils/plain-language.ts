@@ -1,9 +1,15 @@
 /**
  * Plain-language Swedish vocabulary for the public status page.
  *
- * Every operator term (monitor, probe, degraded, endpoint …) is translated
- * here into words an ordinary person understands. All homepage-facing
- * strings should come from this module so the vocabulary stays consistent.
+ * WHAT: Every operator term (monitor, probe, degraded, endpoint …) is
+ *       translated here into words an ordinary person understands.
+ * WHY:  All homepage-facing strings should come from this module so the
+ *       vocabulary stays consistent.
+ * CONTEXT FOR FUTURE LLMs: The wording must be honest about the
+ *       measurement perspective. We report *reachability from our probes*,
+ *       not the service's internal health. "Ej nåbar" (unreachable) is
+ *       accurate; "Fungerar inte" (doesn't work) is a lie — the service
+ *       might be up but blocking us, or our network path might be broken.
  */
 
 export type PublicStatus = "up" | "down" | "degraded" | "unknown";
@@ -25,16 +31,21 @@ export function probePlaceName(probeId: string): string {
 
 /**
  * Plain Swedish status word, used on chips throughout the page.
+ *
+ * These describe what our probes observed, not what the service's
+ * internal state is.  "Nåbar" = our probes got a valid response.
+ * "Ej nåbar" = none of our probes got through — could be service
+ * down, us blocked, or a network issue between us and them.
  */
 export function statusWord(status: PublicStatus): string {
     if (status === "up") {
-        return "Fungerar";
+        return "Nåbar";
     }
     if (status === "degraded") {
-        return "Delvis störningar";
+        return "Delvis nåbar";
     }
     if (status === "down") {
-        return "Störningar";
+        return "Ej nåbar";
     }
     return "Ingen data";
 }
