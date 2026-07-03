@@ -38,24 +38,20 @@ const headline = computed(() => {
         return "Vi har ingen data just nu";
     }
     if (troubledServices.value.length === 0) {
-        return "Allt fungerar som det ska";
+        return "Alla tjänster nåbara";
     }
     if (troubledServices.value.length === 1) {
-        return "1 tjänst har störningar just nu";
+        return "1 tjänst ej nåbar från våra mätpunkter";
     }
-    return `${troubledServices.value.length} tjänster har störningar just nu`;
+    return `${troubledServices.value.length} tjänster ej nåbara från våra mätpunkter`;
 });
 
 const subline = computed(() =>
     `Vi kontrollerar ${props.services.length} svenska tjänster från flera platser i Sverige — dygnet runt, oberoende av tjänsterna själva.`,
 );
 
-function chipWord(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "down") {
-        return "Fungerar inte";
-    }
-    return statusWord(status);
-}
+/* No chipWord override — use statusWord() everywhere so the vocabulary
+   stays consistent and honest ("Ej nåbar" instead of "Fungerar inte"). */
 </script>
 
 <template>
@@ -67,7 +63,7 @@ function chipWord(status: PublicServiceSummary["overall_status"]): string {
         <h2 id="hero-headline" class="hero-headline">{{ headline }}</h2>
         <p class="hero-subline">{{ subline }}</p>
 
-        <ul v-if="troubledServices.length" class="hero-chips" aria-label="Tjänster med störningar just nu">
+        <ul v-if="troubledServices.length" class="hero-chips" aria-label="Tjänster som inte nås från våra mätpunkter">
             <li v-for="service in troubledServices" :key="service.slug">
                 <button
                     type="button"
@@ -77,7 +73,7 @@ function chipWord(status: PublicServiceSummary["overall_status"]): string {
                 >
                     <StatusIcon :status="service.overall_status" :size="15" />
                     <span class="chip-name">{{ service.name }}</span>
-                    <span class="chip-state">{{ chipWord(service.overall_status) }}</span>
+                    <span class="chip-state">{{ statusWord(service.overall_status) }}</span>
                 </button>
             </li>
         </ul>
@@ -110,10 +106,14 @@ function chipWord(status: PublicServiceSummary["overall_status"]): string {
             <div id="hero-explainer-body" class="explainer-reveal" :class="{ open: explainerOpen }">
                 <div class="explainer-inner">
                     <p>
-                        Vi skickar automatiska förfrågningar till varje tjänst från flera platser
-                        i Sverige, flera gånger i minuten. Om svaren uteblir eller blir fel visas
-                        det här inom någon minut. Vi är fristående och har ingen koppling till
-                        tjänsterna vi mäter.
+                        Vi skickar automatiska förfrågningar till varje tjänst från flera
+                        platser i Sverige, flera gånger i minuten. Om svaren uteblir
+                        rapporterar vi tjänsten som <em>ej nåbar</em>. Det kan betyda att
+                        tjänsten är nere, att vår trafik blockeras, eller att det finns
+                        ett nätverksproblem mellan oss och tjänsten.
+                    </p>
+                    <p>
+                        Vi är fristående och har ingen koppling till tjänsterna vi mäter.
                     </p>
                 </div>
             </div>
