@@ -19,7 +19,16 @@ RUNNER_HOST_LABEL="${RUNNER_NAME}"
 ORG_NAME="grvwycorp"
 RUNNER_USER="grvwycorp-runner"
 RUNNER_VERSION="2.331.0"
-RUNNER_HASH="5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7"
+# Per-arch runner package + checksum (GitHub publishes both for each release).
+# Detected from `uname -m` below so the same script works on amd64 (HostUp,
+# RackNerd) and arm64 (Oracle Ampere A1).
+RUNNER_HASH_X64="5fcc01bd546ba5c3f1291c2803658ebd3cedb3836489eda3be357d41bfcf28a7"
+RUNNER_HASH_ARM64="f5863a211241436186723159a111f352f25d5d22711639761ea24c98caef1a9a"
+case "$(uname -m)" in
+    x86_64|amd64)  RUNNER_ARCH="x64";   RUNNER_HASH="${RUNNER_HASH_X64}" ;;
+    aarch64|arm64) RUNNER_ARCH="arm64"; RUNNER_HASH="${RUNNER_HASH_ARM64}" ;;
+    *) echo "Unsupported CPU arch for runner: $(uname -m)" >&2; exit 1 ;;
+esac
 
 # Colors for output
 RED='\033[0;31m'
@@ -161,15 +170,17 @@ log "Setting up runner directory..."
 mkdir -p "$RUNNER_DIR"
 cd "$RUNNER_DIR"
 
-log "Downloading GitHub Actions Runner v${RUNNER_VERSION}..."
-curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L \
-    "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+RUNNER_TARBALL="actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
+
+log "Downloading GitHub Actions Runner v${RUNNER_VERSION} (${RUNNER_ARCH})..."
+curl -o "${RUNNER_TARBALL}" -L \
+    "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_TARBALL}"
 
 log "Validating checksum..."
-echo "${RUNNER_HASH}  actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" | sha256sum -c
+echo "${RUNNER_HASH}  ${RUNNER_TARBALL}" | sha256sum -c
 
 log "Extracting runner..."
-tar xzf ./actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+tar xzf "./${RUNNER_TARBALL}"
 
 # =============================================================================
 # Part 4: Install Runner Dependencies (.NET Core / libicu)

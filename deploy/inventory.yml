@@ -67,6 +67,16 @@ probes:
     # FLAG 2026-06-17: OFFLINE ~36 days (last seen 2026-05-12). Still in the
     # iris-sync target matrix. Effectively not a live probe right now.
     verified: 2026-06-17 DOWN (offline ~36d)
+
+  - hostname: probe04-oraclesto
+    description: Oracle Cloud Ampere A1 (ARM64) — Always Free probe
+    runner_labels: [self-hosted, Linux, ARM64, probe, probe04-oraclesto]
+    tailscale_name: probe04-oraclesto
+    # tailscale_ip: assigned on first `tailscale up` (cloud-init bootstrap)
+    location: Stockholm
+    # ADDED 2026-06-26: Oracle Always Free (2 OCPU / 12 GB, ARM64). Pulls the
+    # multi-arch GHCR image (no on-box build). Bootstrapped via cloud-init.
+    # iris-sync must target this once it reports — see master compose sync matrix.
   # Retired – removed from CI/CD deployment.
   # NOTE 2026-06-17: `debian` is STILL JOINED to the tailnet (online, not serving
   # Iris :3001). It's a zombie — decommission in the Tailscale admin console or

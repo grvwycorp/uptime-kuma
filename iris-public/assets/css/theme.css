@@ -57,6 +57,22 @@
     --color-status-unknown-border: rgba(107, 112, 116, 0.2);
     --color-status-unknown-border-hover: rgba(107, 112, 116, 0.4);
 
+    /* Soft status chip backgrounds */
+    --color-status-up-soft: rgba(167, 196, 173, 0.14);
+    --color-status-down-soft: rgba(230, 126, 128, 0.14);
+    --color-status-degraded-soft: rgba(242, 193, 141, 0.14);
+    --color-status-unknown-soft: rgba(107, 112, 116, 0.14);
+
+    /* Hero verdict tinting (very low opacity washes) */
+    --hero-tint-up: rgba(167, 196, 173, 0.09);
+    --hero-tint-degraded: rgba(242, 193, 141, 0.1);
+    --hero-tint-down: rgba(230, 126, 128, 0.1);
+    --hero-tint-unknown: rgba(107, 112, 116, 0.08);
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12);
+    --shadow-elevated: 0 14px 38px rgba(0, 0, 0, 0.28);
+    --focus-halo: rgba(137, 174, 207, 0.14);
+
     --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
 }
 
@@ -86,6 +102,20 @@
     --color-status-degraded-border-hover: rgba(217, 160, 102, 0.45);
     --color-status-unknown-border: rgba(156, 163, 175, 0.25);
     --color-status-unknown-border-hover: rgba(156, 163, 175, 0.45);
+
+    --color-status-up-soft: rgba(136, 166, 142, 0.15);
+    --color-status-down-soft: rgba(199, 91, 91, 0.12);
+    --color-status-degraded-soft: rgba(217, 160, 102, 0.15);
+    --color-status-unknown-soft: rgba(156, 163, 175, 0.15);
+
+    --hero-tint-up: rgba(136, 166, 142, 0.1);
+    --hero-tint-degraded: rgba(217, 160, 102, 0.12);
+    --hero-tint-down: rgba(199, 91, 91, 0.1);
+    --hero-tint-unknown: rgba(156, 163, 175, 0.1);
+
+    --shadow-card: 0 1px 2px rgba(45, 49, 54, 0.06);
+    --shadow-elevated: 0 14px 38px rgba(45, 49, 54, 0.14);
+    --focus-halo: rgba(74, 109, 140, 0.12);
 }
 
 *,
@@ -132,6 +162,51 @@ a:hover {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-subtle);
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* First-paint entrance (used with per-element --stagger index) */
+@keyframes rise-in {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Gentle pulse for the live "Uppdaterad" indicator */
+@keyframes live-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.35;
+        transform: scale(0.75);
+    }
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 /* Skeleton loading shimmer */

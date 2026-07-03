@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PublicServiceSummary } from "~/types/public";
+import { placesPhrase, statusWord } from "~/utils/plain-language";
 
 const props = defineProps<{
     service: PublicServiceSummary;
@@ -11,97 +12,105 @@ const emit = defineEmits<{
     toggle: [slug: string];
 }>();
 
-function statusColor(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "up") return "var(--color-status-up)";
-    if (status === "degraded") return "var(--color-status-degraded)";
-    if (status === "unknown") return "var(--color-status-unknown)";
-    return "var(--color-status-down)";
+const detailId = computed(() => `service-detail-${props.service.slug}`);
+
+/* Smooth height expand/collapse via JS transition hooks (works with v-if,
+   collapses gracefully under prefers-reduced-motion thanks to the global
+   transition-duration override). */
+function onEnter(el: Element) {
+    const element = el as HTMLElement;
+    element.style.height = "0";
+    element.style.opacity = "0";
+    requestAnimationFrame(() => {
+        element.style.height = `${element.scrollHeight}px`;
+        element.style.opacity = "1";
+    });
 }
 
-function borderColor(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "up") return "var(--color-status-up-border)";
-    if (status === "degraded") return "var(--color-status-degraded-border)";
-    if (status === "unknown") return "var(--color-status-unknown-border)";
-    return "var(--color-status-down-border)";
+function onAfterEnter(el: Element) {
+    const element = el as HTMLElement;
+    element.style.height = "";
+    element.style.opacity = "";
 }
 
-function borderColorHover(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "up") return "var(--color-status-up-border-hover)";
-    if (status === "degraded") return "var(--color-status-degraded-border-hover)";
-    if (status === "unknown") return "var(--color-status-unknown-border-hover)";
-    return "var(--color-status-down-border-hover)";
-}
-
-function probeLabel(service: PublicServiceSummary): string {
-    if (service.probe_count === 0) return "No probes";
-    return `${service.probes_up}/${service.probe_count} probes`;
-}
-
-function probeColor(service: PublicServiceSummary): string {
-    if (service.probe_count === 0) return "var(--color-text-muted)";
-    if (service.probes_up === service.probe_count) return "var(--color-status-up)";
-    if (service.probes_up === 0) return "var(--color-status-down)";
-    return "var(--color-status-degraded)";
-}
-
-function serviceStatusLabel(status: PublicServiceSummary["overall_status"]): string {
-    if (status === "degraded") return "Degraded";
-    if (status === "down") return "Down";
-    if (status === "unknown") return "Unknown";
-    return "Healthy";
+function onLeave(el: Element) {
+    const element = el as HTMLElement;
+    element.style.height = `${element.scrollHeight}px`;
+    requestAnimationFrame(() => {
+        element.style.height = "0";
+        element.style.opacity = "0";
+    });
 }
 </script>
 
 <template>
-    <div
+    <article
         class="service-card"
-        :class="{
-            expanded: expanded,
-            highlighted: highlighted,
-        }"
-        :style="{
-            '--card-border': borderColor(service.overall_status),
-            '--card-border-hover': borderColorHover(service.overall_status),
-        }"
+        :class="[`card--${service.overall_status}`, { expanded, highlighted }]"
     >
-        <div class="card-header" @click="emit('toggle', service.slug)">
-            <div class="card-body">
+        <button
+            type="button"
+            class="card-header"
+            :aria-expanded="expanded"
+            :aria-controls="detailId"
+            @click="emit('toggle', service.slug)"
+        >
+            <div class="card-main">
                 <div class="card-name-row">
-                    <div class="card-name">{{ service.name }}</div>
-                    <span class="card-state" :class="`status-${service.overall_status}`">
-                        {{ serviceStatusLabel(service.overall_status) }}
+                    <h4 class="card-name">{{ service.name }}</h4>
+                    <span class="card-chip" :class="`chip--${service.overall_status}`">
+                        <StatusIcon :status="service.overall_status" :size="14" />
+                        {{ statusWord(service.overall_status) }}
                     </span>
                 </div>
+
+                <p v-if="service.description_excerpt" class="card-description">
+                    {{ service.description_excerpt }}
+                </p>
 
                 <div class="card-meta">
-                    <span class="probe-count" :style="{ color: probeColor(service) }">
-                        {{ probeLabel(service) }}
-                    </span>
-                    <span class="meta-sep">&middot;</span>
-                    <span class="monitor-count">{{ service.monitors.length }} monitors</span>
+                    <span>{{ placesPhrase(service.probe_count) }}</span>
+                    <span class="chevron" :class="{ open: expanded }" aria-hidden="true">&#9662;</span>
                 </div>
             </div>
+        </button>
 
-            <div class="card-status">
-                <span
-                    class="status-dot"
-                    :style="{ background: statusColor(service.overall_status) }"
-                />
-                <span class="chevron" :class="{ open: expanded }">&#9662;</span>
+        <Transition name="detail" @enter="onEnter" @after-enter="onAfterEnter" @leave="onLeave">
+            <div v-if="expanded" :id="detailId" class="detail-wrap">
+                <PublicServiceDetail :service="service" />
             </div>
-        </div>
-
-        <PublicServiceDetail v-if="expanded" :service="service" />
-    </div>
+        </Transition>
+    </article>
 </template>
 
 <style scoped>
 .service-card {
     background: var(--color-surface);
     border: 1px solid var(--card-border, var(--color-border));
-    border-radius: 14px;
+    border-radius: 16px;
     overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    box-shadow: var(--shadow-card);
+    transition: border-color 0.2s, box-shadow 0.25s;
+}
+
+.card--up {
+    --card-border: var(--color-status-up-border);
+    --card-border-hover: var(--color-status-up-border-hover);
+}
+
+.card--down {
+    --card-border: var(--color-status-down-border);
+    --card-border-hover: var(--color-status-down-border-hover);
+}
+
+.card--degraded {
+    --card-border: var(--color-status-degraded-border);
+    --card-border-hover: var(--color-status-degraded-border-hover);
+}
+
+.card--unknown {
+    --card-border: var(--color-status-unknown-border);
+    --card-border-hover: var(--color-status-unknown-border-hover);
 }
 
 .service-card:hover {
@@ -110,20 +119,23 @@ function serviceStatusLabel(status: PublicServiceSummary["overall_status"]): str
 
 .service-card.expanded {
     border-color: var(--color-focus);
-    box-shadow: 0 0 0 1px var(--color-focus), 0 10px 30px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 0 0 1px var(--color-focus), var(--shadow-elevated);
 }
 
 .service-card.highlighted {
-    box-shadow: 0 0 0 1px var(--color-focus), 0 0 0 8px rgba(137, 174, 207, 0.08);
+    box-shadow: 0 0 0 1px var(--color-focus), 0 0 0 8px var(--focus-halo);
 }
 
 .card-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    display: block;
+    width: 100%;
     padding: 18px 20px;
+    background: none;
+    border: none;
+    font-family: inherit;
+    color: inherit;
+    text-align: left;
     cursor: pointer;
-    gap: 12px;
     transition: background 0.15s;
 }
 
@@ -131,96 +143,81 @@ function serviceStatusLabel(status: PublicServiceSummary["overall_status"]): str
     background: var(--color-surface-hover);
 }
 
-.card-body {
-    flex: 1;
-    min-width: 0;
+.card-header:focus-visible {
+    outline-offset: -2px;
 }
 
 .card-name-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .card-name {
     font-weight: 600;
-    font-size: 18px;
+    font-size: 17px;
     line-height: 1.3;
     color: var(--color-text);
 }
 
-.card-state {
+.card-chip {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-width: 84px;
-    padding: 4px 10px;
+    gap: 6px;
+    padding: 4px 11px;
     border-radius: 999px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
+    white-space: nowrap;
     flex-shrink: 0;
+}
+
+.chip--up {
+    background: var(--color-status-up-soft);
+    color: var(--color-status-up);
+}
+
+.chip--down {
+    background: var(--color-status-down-soft);
+    color: var(--color-status-down);
+}
+
+.chip--degraded {
+    background: var(--color-status-degraded-soft);
+    color: var(--color-status-degraded);
+}
+
+.chip--unknown {
+    background: var(--color-status-unknown-soft);
+    color: var(--color-status-unknown);
+}
+
+.card-description {
+    color: var(--color-text-muted);
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .card-meta {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
-}
-
-.probe-count {
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-}
-
-.meta-sep {
-    color: var(--color-text-subtle);
-}
-
-.monitor-count {
-    color: var(--color-text-muted);
-}
-
-.card-status {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    justify-content: space-between;
     gap: 8px;
-    padding-top: 2px;
-}
-
-.status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.status-up {
-    background: rgba(167, 196, 173, 0.14);
-    color: var(--color-status-up);
-}
-
-.status-down {
-    background: rgba(230, 126, 128, 0.14);
-    color: var(--color-status-down);
-}
-
-.status-degraded {
-    background: rgba(242, 193, 141, 0.14);
-    color: var(--color-status-degraded);
-}
-
-.status-unknown {
-    background: rgba(107, 112, 116, 0.14);
-    color: var(--color-status-unknown);
+    color: var(--color-text-subtle);
+    font-size: 12.5px;
 }
 
 .chevron {
+    font-size: 12px;
     color: var(--color-text-muted);
-    font-size: 13px;
     transition: transform 0.25s ease;
     display: inline-block;
 }
@@ -229,14 +226,18 @@ function serviceStatusLabel(status: PublicServiceSummary["overall_status"]): str
     transform: rotate(180deg);
 }
 
+.detail-wrap {
+    overflow: hidden;
+}
+
+.detail-enter-active,
+.detail-leave-active {
+    transition: height 0.32s ease, opacity 0.32s ease;
+}
+
 @media (max-width: 640px) {
     .card-header {
         padding: 16px;
-    }
-
-    .card-name-row {
-        align-items: flex-start;
-        flex-direction: column;
     }
 }
 </style>
