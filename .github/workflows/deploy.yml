@@ -29,6 +29,55 @@ env:
 
 jobs:
   # ============================================
+  # Build the probe image ONCE in CI and push to GHCR.
+  # Probes then PULL this image (see deploy-probes) instead of running the
+  # heavy npm-ci + Vite build on-box. That drops the probe RAM floor from
+  # ~4GB (on-host build) to ~1.5–2GB (runtime only), unlocking cheap VPS
+  # targets. Uses the built-in GITHUB_TOKEN — no new repo secret required.
+  # Multi-arch: amd64 (HostUp / RackNerd / Netcup) + arm64 (Oracle Ampere A1).
+  # The arm64 leg is emulated on the amd64 runner, so this build is slower —
+  # the gha layer cache keeps incremental builds reasonable.
+  # ============================================
+  build-probe-image:
+    if: >
+      github.event_name == 'push' ||
+      github.event.inputs.target == 'all' ||
+      github.event.inputs.target == 'probes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push probe image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/dockerfile
+          target: release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: ${{ github.event.inputs.rebuild == 'true' }}
+          tags: |
+            ghcr.io/grvwycorp/iris-probe:${{ github.sha }}
+            ghcr.io/grvwycorp/iris-probe:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================
   # Master deployment
   # Runs on nodes with label: [self-hosted, master]
   # ============================================
@@ -153,8 +202,15 @@ jobs:
           else
             echo "=== Skipping iris-sync build (no changes) ==="
           fi
-          docker compose -p iris up -d --force-recreate --remove-orphans
-          # Restart OTEL to pick up config changes (mounted volume doesn't trigger recreation)
+          # Recreate ONLY services whose image or config actually changed.
+          # The old blanket `--force-recreate` bounced every container on every
+          # push — including iris-db (MariaDB) and iris-vm — which is the source
+          # of the "short service disruption". Compose already recreates a
+          # container when its built image changes, so let it decide.
+          # See REBUILD.md Phase 0 / iris-report.html §1.1.
+          docker compose -p iris up -d --remove-orphans
+          # OTEL config is a bind-mounted file, so editing it doesn't change the
+          # container's config hash. Restart just OTEL to reload the config.
           docker compose -p iris restart iris-otel || true
           sleep 5
           docker compose -p iris ps
@@ -233,7 +289,14 @@ jobs:
           # Don't fail deployment if VM isn't ready yet
 
       - name: Cleanup old images
-        run: docker image prune -f
+        run: |
+          # Old behaviour pruned only DANGLING images and never touched the
+          # build cache, which is what actually fills the disk after every
+          # `npm ci` + Vite build (hence the manual `docker prune` treadmill).
+          # Also reclaim build cache older than 72h — keeps recent layers for
+          # fast rebuilds, evicts the rest. See REBUILD.md Phase 0 / report §1.2.
+          docker image prune -f
+          docker builder prune -f --filter "until=72h"
 
   # ============================================
   # Probe deployment
@@ -245,6 +308,11 @@ jobs:
       github.event_name == 'push' ||
       github.event.inputs.target == 'all' ||
       github.event.inputs.target == 'probes'
+    # Pull the image built in CI; never build on the probe host.
+    needs: build-probe-image
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -252,6 +320,7 @@ jobs:
           - probe01
           - labbmartin
           - probe03-karabro
+          - probe04-oraclesto  # Oracle Cloud Ampere A1 (ARM64), Stockholm — Always Free
           # - debianbook  # Retired – removed from deployment
     runs-on: [self-hosted, probe, '${{ matrix.probe }}']
     timeout-minutes: 15
@@ -262,35 +331,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for change detection
-
-      - name: Detect changes
-        id: changes
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "rebuild=true" >> $GITHUB_OUTPUT
-            echo "Manual dispatch — rebuilding"
-            exit 0
-          fi
-
-          BEFORE="${{ github.event.before }}"
-          if [ -z "$BEFORE" ] || [ "$BEFORE" == "0000000000000000000000000000000000000000" ]; then
-            echo "rebuild=true" >> $GITHUB_OUTPUT
-            echo "No previous SHA — rebuilding"
-            exit 0
-          fi
-
-          CHANGED=$(git diff --name-only "$BEFORE" HEAD)
-
-          # Probe uses the same Dockerfile as iris-web
-          if echo "$CHANGED" | grep -qE '^(server/|src/|package\.json|package-lock\.json|\.npmrc|docker/|db/|extra/)'; then
-            echo "rebuild=true" >> $GITHUB_OUTPUT
-            echo "→ iris-probe: rebuild needed"
-          else
-            echo "rebuild=false" >> $GITHUB_OUTPUT
-            echo "→ iris-probe: no changes, skipping build"
-          fi
 
       - name: Get probe identity
         id: identity
@@ -299,26 +339,30 @@ jobs:
           echo "hostname=${PROBE_HOSTNAME}" >> $GITHUB_OUTPUT
           echo "Deploying probe: ${PROBE_HOSTNAME}"
 
-      - name: Build and deploy probe
+      - name: Log in to GHCR (pull access)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy probe (pull pre-built image — no on-box build)
         working-directory: deploy/probe
         env:
           HOSTNAME: ${{ steps.identity.outputs.hostname }}
           IRIS_PROBE_USER: ${{ secrets.IRIS_PROBE_USER }}
           IRIS_PROBE_PASSWORD: ${{ secrets.IRIS_PROBE_PASSWORD }}
           IRIS_MASTER_IP: ${{ secrets.IRIS_MASTER_IP }}
-          REBUILD: ${{ steps.changes.outputs.rebuild }}
+          # Pin to the exact commit built by the build-probe-image job.
+          IRIS_IMAGE_TAG: ${{ github.sha }}
         run: |
-          BUILD_ARGS=""
-          if [ "${{ github.event.inputs.rebuild }}" == "true" ]; then
-            BUILD_ARGS="--no-cache"
-          fi
-          if [ "$REBUILD" == "true" ]; then
-            echo "=== Building iris-probe ==="
-            docker compose -p iris build $BUILD_ARGS iris-probe
-          else
-            echo "=== Skipping iris-probe build (no changes) ==="
-          fi
-          docker compose -p iris up -d --force-recreate --remove-orphans
+          echo "=== Pulling pre-built probe image (built in CI, no on-box build) ==="
+          docker compose -p iris pull iris-probe
+          # Recreate only what changed (no blanket --force-recreate). Compose
+          # recreates iris-probe because its image tag changed; the embedded
+          # MariaDB data volume (iris-probe-data) persists across the restart.
+          # See REBUILD.md Phase 0 / iris-report.html §1.1.
+          docker compose -p iris up -d --remove-orphans
           sleep 5
           docker compose -p iris ps
 
@@ -348,4 +392,11 @@ jobs:
           docker volume rm iris-bgp-data 2>/dev/null || true
 
       - name: Cleanup old images
-        run: docker image prune -f
+        run: |
+          # Old behaviour pruned only DANGLING images and never touched the
+          # build cache, which is what actually fills the disk after every
+          # `npm ci` + Vite build (hence the manual `docker prune` treadmill).
+          # Also reclaim build cache older than 72h — keeps recent layers for
+          # fast rebuilds, evicts the rest. See REBUILD.md Phase 0 / report §1.2.
+          docker image prune -f
+          docker builder prune -f --filter "until=72h"

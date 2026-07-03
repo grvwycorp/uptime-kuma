@@ -189,6 +189,16 @@ func runSyncCycle(
 		return
 	}
 
+	// Populate monitor tags only if some enabled probe actually filters by tag,
+	// so the common all-monitors-to-all-probes case pays no extra query.
+	if anyProbeUsesTags(probes) {
+		if err := masterDB.AttachTags(ctx, masterMonitors); err != nil {
+			logger.Error("failed to attach monitor tags from master", "error", err)
+			return
+		}
+		logger.Info("attached monitor tags for tag-driven probe selection")
+	}
+
 	// Sync to each probe concurrently
 	var wg sync.WaitGroup
 	var successMu sync.Mutex
@@ -333,17 +343,21 @@ func syncToProbe(
 	return stats, nil
 }
 
-// filterMonitorsForProbe filters monitors based on probe-specific tags/types configuration.
+// filterMonitorsForProbe filters monitors based on probe-specific tags/types
+// configuration. Delegates to the pure reconciler function, which applies both
+// the type and tag filters and re-attaches ancestor groups so hierarchies are
+// preserved on the probe. Tags must already be populated on the monitors (see
+// AttachTags); when no probe uses tags they are nil and the tag filter is a no-op.
 func filterMonitorsForProbe(monitors map[int64]*db.Monitor, probeCfg config.ProbeConfig) map[int64]*db.Monitor {
-	result := monitors
+	return isync.FilterMonitorsForProbe(monitors, probeCfg.Types, probeCfg.Tags)
+}
 
-	// Filter by types if specified
-	if len(probeCfg.Types) > 0 {
-		result = isync.FilterMonitorsByTypes(result, probeCfg.Types)
+// anyProbeUsesTags reports whether at least one probe has a tag filter configured.
+func anyProbeUsesTags(probes []config.ProbeConfig) bool {
+	for _, p := range probes {
+		if len(p.Tags) > 0 {
+			return true
+		}
 	}
-
-	// Note: Tag filtering would require fetching monitor_tag associations from the master DB
-	// For now, we sync all monitors to all probes (as per requirements)
-
-	return result
+	return false
 }

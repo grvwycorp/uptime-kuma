@@ -183,6 +183,13 @@ type Monitor struct {
 
 	// Computed field for change detection (not persisted)
 	ContentHash string `db:"-" json:"-"`
+
+	// Tags attached to this monitor on the Master, used for tag-driven probe
+	// selection (see FilterMonitorsForProbe). Not a DB column (populated via a
+	// monitor_tag join, AttachTags) and deliberately NOT part of monitorHashData:
+	// a monitor's tags decide WHICH probes run it, not WHAT the check does, so a
+	// tag change must not trigger a content re-sync of an already-synced monitor.
+	Tags []string `db:"-" json:"-"`
 }
 
 // monitorHashData contains only the fields used for hash computation.

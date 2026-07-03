@@ -510,6 +510,12 @@ function incrementCheckTotal(monitorType, status) {
     if (!initialized || !otel.isEnabled() || !counters.checkTotal) {
         return;
     }
+    // Skip non-network types (group/push/manual): they don't perform a real
+    // outbound check, so counting them as "checks" inflates totals and the
+    // up/down ratio. Mirrors the guard in recordCheck() — keep them in lockstep.
+    if (NON_NETWORK_TYPES.has(monitorType)) {
+        return;
+    }
     counters.checkTotal.add(1, buildFleetLabels({
         monitor_type: String(monitorType || "unknown"),
         status: String(status),
@@ -542,6 +548,12 @@ function recordCheckDuration(monitorType, durationSeconds) {
  */
 function incrementCheckError(monitorType, errorCategory) {
     if (!initialized || !otel.isEnabled() || !counters.checkErrorTotal) {
+        return;
+    }
+    // Skip non-network types: a "group" cannot have a real check error
+    // (content_mismatch etc.) — it only aggregates child status. Counting them
+    // produced phantom group/json-query errors. Mirrors recordCheck()'s guard.
+    if (NON_NETWORK_TYPES.has(monitorType)) {
         return;
     }
     counters.checkErrorTotal.add(1, buildFleetLabels({

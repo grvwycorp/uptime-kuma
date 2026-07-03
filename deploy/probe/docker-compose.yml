@@ -1,5 +1,13 @@
 services:
   iris-probe:
+    # Pre-built in CI (.github/workflows/deploy.yml → build-probe-image) and
+    # PULLED from GHCR so probe hosts never run the heavy npm-ci + Vite build.
+    # This drops the probe RAM floor from ~4GB (on-host build) to ~1.5–2GB
+    # (runtime only), which unlocks cheaper VPS targets. The deploy workflow
+    # pins IRIS_IMAGE_TAG to the deployed commit; a manual `up` falls back to
+    # :latest. The `build:` block below is retained ONLY for local dev
+    # (`docker compose build`) — the probe deploy always pulls, never builds.
+    image: ghcr.io/grvwycorp/iris-probe:${IRIS_IMAGE_TAG:-latest}
     build:
       context: ../..
       dockerfile: docker/dockerfile

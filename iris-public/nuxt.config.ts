@@ -4,18 +4,18 @@ export default defineNuxtConfig({
 
     app: {
         head: {
-            title: "Iris — Swedish Infrastructure Status",
+            title: "Iris — Fungerar Sveriges digitala tjänster?",
             meta: [
                 { charset: "utf-8" },
                 { name: "viewport", content: "width=device-width, initial-scale=1" },
-                { name: "description", content: "Real-time availability monitoring of Swedish digital infrastructure" },
+                { name: "description", content: "Oberoende koll på Sveriges viktigaste digitala tjänster — BankID, Swish, 1177 med flera. Vi kontrollerar dem dygnet runt från flera platser i Sverige." },
             ],
             link: [
                 { rel: "preconnect", href: "https://fonts.googleapis.com" },
                 { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
-                { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" },
+                { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" },
             ],
-            htmlAttrs: { lang: "en" },
+            htmlAttrs: { lang: "sv" },
         },
     },
 

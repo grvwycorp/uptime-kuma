@@ -196,6 +196,42 @@ func (r *Repository) GetMonitorsByTags(ctx context.Context, tags []string) (map[
 	return filtered, nil
 }
 
+// AttachTags populates the Tags slice on each monitor in the map from the
+// monitor_tag/tag join. Used for tag-driven probe selection
+// (sync.FilterMonitorsForProbe). A single query fetches every association, so
+// cost is one round-trip regardless of monitor count. Monitors with no tags are
+// left with a nil Tags slice. Mutates the monitors in place.
+func (r *Repository) AttachTags(ctx context.Context, monitors map[int64]*Monitor) error {
+	if len(monitors) == 0 {
+		return nil
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT mt.monitor_id, t.name
+		FROM monitor_tag mt
+		JOIN tag t ON mt.tag_id = t.id
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to query monitor tags: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var monitorID int64
+		var tagName string
+		if err := rows.Scan(&monitorID, &tagName); err != nil {
+			return fmt.Errorf("failed to scan monitor_tag row: %w", err)
+		}
+		if m, ok := monitors[monitorID]; ok {
+			m.Tags = append(m.Tags, tagName)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating monitor_tag rows: %w", err)
+	}
+	return nil
+}
+
 // GetMonitorsByTypes retrieves monitors of the specified types.
 func (r *Repository) GetMonitorsByTypes(ctx context.Context, types []string) (map[int64]*Monitor, error) {
 	if len(types) == 0 {
